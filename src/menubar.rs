@@ -1098,7 +1098,7 @@ pub(crate) fn menu_bar_dirty(
 #[allow(clippy::too_many_arguments)]
 pub fn update_menu_bar(
     active_display: ActiveDisplay,
-    workspaces: Query<&LayoutStrip>,
+    workspaces: crate::ecs::numbering::CombinedWorkspaces,
     choices: Res<crate::ecs::columns::ColumnChoices>,
     windows: Windows,
     apps: Query<&Application>,
@@ -1123,23 +1123,33 @@ pub fn update_menu_bar(
         let (_, _, parent) = windows.find_parent(window.id())?;
         apps.get(parent).ok().map(|app| app.name().to_string())
     };
-    let mut summaries = workspaces
+    // Every display's workspaces, by their combined number.
+    let list = workspaces.list();
+    let summaries = list
         .iter()
-        .filter(|workspace| workspace.id() == strip.id())
-        .map(|workspace| WorkspaceSummary {
-            virtual_index: workspace.virtual_index,
-            apps: workspace
-                .all_windows()
-                .into_iter()
-                .filter_map(app_name)
-                .collect(),
+        .zip(0u32..)
+        .map(|(workspace, number)| WorkspaceSummary {
+            virtual_index: number,
+            apps: workspaces
+                .strip(workspace.strip)
+                .map(|strip| {
+                    strip
+                        .all_windows()
+                        .into_iter()
+                        .filter_map(app_name)
+                        .collect()
+                })
+                .unwrap_or_default(),
         })
         .collect::<Vec<_>>();
-    summaries.sort_by_key(|summary| summary.virtual_index);
-    summaries.dedup_by_key(|summary| summary.virtual_index);
+    let current = list
+        .iter()
+        .zip(0u32..)
+        .find_map(|(workspace, number)| workspace.active.then_some(number))
+        .unwrap_or(strip.virtual_index);
 
     menu_bar.update(
-        strip.virtual_index,
+        current,
         &summaries,
         choices.count(strip, &active_display.display().screen(), &config),
         active_display.display().name(),

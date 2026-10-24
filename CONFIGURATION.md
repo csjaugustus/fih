@@ -332,6 +332,8 @@ around at the start or the end.
 
 Moving the last window out of the virtual row, will "collapse it".
 
+With more than one display, the workspaces of every display share one numbering, so the keyboard reaches them all: displays in their arrangement, left to right (then top to bottom), and each display's workspaces in order. With a monitor on the left holding two workspaces and the laptop on the right holding one, they are 1, 2 and 3. `window_virtualnum_<number>` switches to that workspace on whichever display it is, moving focus there; `window_virtualmovenum_<number>` / `window_virtualsendnum_<number>` move the focused window there, across displays if need be; `window_virtualopen_north` / `_south` step through them all. A number past the last opens a new workspace on the display in front. Adding a workspace shifts the numbers of those after it. The menu bar and the minimap show the same numbers.
+
 Virtual workspaces can also be navigated using trackpad gestures. If `[swipe.gesture]` is configured, a vertical 3/4-finger swipe will switch between virtual workspace rows, while horizontal swipes continue to scroll the strip as usual. For mouse users, see the `vertical_modifier` option under `[swipe.scroll]`.
 
 | Action | Description |

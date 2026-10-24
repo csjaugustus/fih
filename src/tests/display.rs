@@ -786,8 +786,10 @@ fn test_hidden_stack_stays_off_the_display_below() {
         Event::Command {
             command: Command::Window(Operation::Stack(true)),
         },
+        // A second workspace on the same display, hiding the first. (Number
+        // 2 would be the display below's, in the combined numbering.)
         Event::Command {
-            command: Command::Window(Operation::VirtualNumber(1)),
+            command: Command::Window(Operation::VirtualAdd),
         },
         Event::Command {
             command: Command::PrintState,
@@ -1538,4 +1540,107 @@ fn test_remove_display_populates_empty_first_workspace_on_surviving_display() {
             );
         })
         .run(commands);
+}
+
+/// The workspaces of every display share one numbering, so the keyboard
+/// reaches the other display's: number 2 is the display below's first, and
+/// up / down step across displays.
+#[test]
+fn workspace_numbers_reach_the_other_display() {
+    let mut harness = TestHarness::new()
+        .with_display(
+            EXT_DISPLAY_ID,
+            IRect::new(
+                0,
+                TEST_DISPLAY_HEIGHT,
+                EXT_DISPLAY_WIDTH,
+                TEST_DISPLAY_HEIGHT + EXT_DISPLAY_HEIGHT,
+            ),
+            vec![EXT_WORKSPACE_ID],
+        )
+        .with_windows(1)
+        .with_workspace_window(100, EXT_WORKSPACE_ID, |window| {
+            window.workspace_id = EXT_WORKSPACE_ID;
+        })
+        .on_iteration(0, |world, state| {
+            let entity = find_window_entity(0, world);
+            let window = world.get::<Window>(entity).expect("need window");
+            state.set_cursor_position(window.frame().center());
+        });
+    harness.run(vec![
+        Event::MenuOpened { window_id: 0 },
+        Event::Command {
+            command: Command::Window(Operation::VirtualNumber(1)),
+        },
+        Event::Command {
+            command: Command::PrintState,
+        },
+    ]);
+
+    let world = harness.world();
+    let mut active =
+        world.query_filtered::<&LayoutStrip, With<crate::ecs::ActiveWorkspaceMarker>>();
+    assert_eq!(
+        active.single(world).unwrap().id(),
+        EXT_WORKSPACE_ID,
+        "workspace 2 is the display below's"
+    );
+    let mut focused = world.query_filtered::<&Window, With<crate::ecs::FocusedMarker>>();
+    assert_eq!(
+        focused.single(world).unwrap().id(),
+        100,
+        "focus follows it there"
+    );
+}
+
+/// Moving a window to a workspace number on the other display takes it
+/// across, and with `Follow` focus goes with it.
+#[test]
+fn moving_a_window_by_number_crosses_displays() {
+    use crate::commands::MoveFocus;
+
+    let mut harness = TestHarness::new()
+        .with_display(
+            EXT_DISPLAY_ID,
+            IRect::new(
+                0,
+                TEST_DISPLAY_HEIGHT,
+                EXT_DISPLAY_WIDTH,
+                TEST_DISPLAY_HEIGHT + EXT_DISPLAY_HEIGHT,
+            ),
+            vec![EXT_WORKSPACE_ID],
+        )
+        .with_windows(2)
+        .with_workspace_window(100, EXT_WORKSPACE_ID, |window| {
+            window.workspace_id = EXT_WORKSPACE_ID;
+        })
+        .on_iteration(0, |world, state| {
+            let entity = find_window_entity(0, world);
+            let window = world.get::<Window>(entity).expect("need window");
+            state.set_cursor_position(window.frame().center());
+        });
+    harness.run(vec![
+        Event::MenuOpened { window_id: 0 },
+        Event::Command {
+            command: Command::Window(Operation::VirtualMoveNumber(1, MoveFocus::Follow)),
+        },
+        Event::Command {
+            command: Command::PrintState,
+        },
+    ]);
+
+    let world = harness.world();
+    let moved = find_window_entity(0, world);
+    let mut strips = world.query::<&LayoutStrip>();
+    let holder = strips
+        .iter(world)
+        .find(|strip| strip.contains(moved))
+        .expect("the window is in a strip");
+    assert_eq!(
+        holder.id(),
+        EXT_WORKSPACE_ID,
+        "it moved to the display below"
+    );
+    let mut focused = world.query_filtered::<&Window, With<crate::ecs::FocusedMarker>>();
+    assert_eq!(focused.single(world).unwrap().id(), 0, "focus followed it");
 }

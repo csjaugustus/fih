@@ -47,6 +47,7 @@ pub mod layout;
 #[cfg(feature = "lua")]
 pub mod layout_ops;
 pub mod mouse;
+pub mod numbering;
 pub mod params;
 pub(crate) mod restore;
 pub mod script_state;

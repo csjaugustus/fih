@@ -156,10 +156,11 @@ fn virtual_open_skips_empty_workspaces_and_wraps_around() {
     };
     let commands = vec![
         Event::MenuOpened { window_id: 0 },
-        // A window on workspace 3, an empty workspace 2, back on 1.
-        virtual_command(Operation::VirtualMoveNumber(2, MoveFocus::Stay)),
-        virtual_command(Operation::VirtualNumber(1)),
+        // An empty workspace 2, back on 1, and a window sent on to a new
+        // workspace 3.
+        virtual_command(Operation::VirtualAdd),
         virtual_command(Operation::VirtualNumber(0)),
+        virtual_command(Operation::VirtualMoveNumber(2, MoveFocus::Stay)),
         virtual_command(Operation::VirtualOccupied(Direction::South)),
         virtual_command(Operation::VirtualOccupied(Direction::South)),
         virtual_command(Operation::VirtualOccupied(Direction::North)),

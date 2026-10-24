@@ -113,7 +113,11 @@ impl Plugin for WorkspaceEventsPlugin {
 
         app.add_systems(
             PreUpdate,
-            (switch_virtual_workspace_bind, move_virtual_workspace_bind)
+            (
+                switch_virtual_workspace_bind,
+                crate::ecs::numbering::switch_combined_workspace,
+                move_virtual_workspace_bind,
+            )
                 .in_set(super::PreUpdateSet::Dispatch),
         );
         app.add_systems(
@@ -732,8 +736,10 @@ fn cleanup_active_workspace_marker(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn flash_workspace_on_activation(
     active_display: Single<Entity, With<ActiveDisplayMarker>>,
+    combined: crate::ecs::numbering::CombinedWorkspaces,
     displays: Query<(Entity, &Display)>,
     strips: PopupStrips,
     window_manager: Res<WindowManager>,
@@ -785,7 +791,13 @@ fn flash_workspace_on_activation(
     }
     // With the minimap on, its rows carry the workspace number instead.
     if switched && config.workspace_popup_status() && !config.minimap_enabled() {
-        commands.flash_message(format!("{}", strip.virtual_index + 1), 1.0);
+        // The combined number every display's workspaces share.
+        let number = combined
+            .list()
+            .iter()
+            .position(|workspace| workspace.strip == entity)
+            .unwrap_or(usize::try_from(strip.virtual_index).unwrap_or(0));
+        commands.flash_message(format!("{}", number + 1), 1.0);
     }
 }
 
@@ -1049,11 +1061,7 @@ fn switch_virtual_workspace_bind(
     let Some(operation) = filter_window_operations(&mut messages, |op| {
         matches!(
             op,
-            Operation::Virtual(_)
-                | Operation::VirtualNumber(_)
-                | Operation::VirtualAdd
-                | Operation::FocusOrVirtual(_)
-                | Operation::VirtualOccupied(_)
+            Operation::Virtual(_) | Operation::VirtualAdd | Operation::FocusOrVirtual(_)
         )
     })
     .next() else {
@@ -1124,52 +1132,8 @@ fn switch_virtual_workspace_bind(
             }
         }
         Operation::Virtual(Direction::North | Direction::West) => current_index.saturating_sub(1),
-        // The next workspace with windows that way, leaving empty ones out and
-        // wrapping around past either end.
-        Operation::VirtualOccupied(direction @ (Direction::North | Direction::South)) => {
-            let occupied = rows
-                .iter()
-                .enumerate()
-                .filter(|(index, (_, strip, _))| {
-                    *index != current_index && !strip.all_windows().is_empty()
-                })
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
-            let next = if matches!(direction, Direction::South) {
-                occupied
-                    .iter()
-                    .find(|index| **index > current_index)
-                    .or(occupied.first())
-            } else {
-                occupied
-                    .iter()
-                    .rev()
-                    .find(|index| **index < current_index)
-                    .or(occupied.last())
-            };
-            let Some(&index) = next else {
-                return;
-            };
-            index
-        }
         Operation::Virtual(Direction::First) => 0,
         Operation::Virtual(Direction::Last) => rows.len().saturating_sub(1),
-        Operation::VirtualNumber(target_virtual_index) => {
-            let Some(index) = rows
-                .iter()
-                .position(|(_, strip, _)| strip.virtual_index == *target_virtual_index)
-            else {
-                commands.spawn_layout_strip(
-                    LayoutStrip::new(workspace_id, *target_virtual_index),
-                    active_display.bounds().min,
-                    active_display.entity(),
-                    true,
-                );
-
-                return;
-            };
-            index
-        }
         Operation::VirtualAdd => {
             let next_virtual_index = rows
                 .iter()
@@ -1206,6 +1170,55 @@ fn switch_virtual_workspace_bind(
     );
 }
 
+/// Moves `window` from the active strip into the strip of `target`, a
+/// workspace on another display, following it there or staying put.
+fn move_window_to_display(
+    window: Entity,
+    target: crate::ecs::numbering::NumberedWorkspace,
+    move_focus: MoveFocus,
+    combined: &crate::ecs::numbering::CombinedWorkspaces,
+    active_display: &ActiveDisplay,
+    commands: &mut Commands,
+) {
+    let source = active_display.active_strip();
+    let neighbour = source
+        .left_neighbour(window)
+        .or_else(|| source.right_neighbour(window));
+    let target_strip = target.strip;
+    commands.queue(move |world: &mut World| {
+        let mut strips = world.query::<&mut LayoutStrip>();
+        for mut strip in strips.iter_mut(world) {
+            if strip.contains(window) {
+                strip.remove(window);
+            }
+        }
+        if let Ok(mut strip) = strips.get_mut(world, target_strip) {
+            strip.append(window);
+        }
+    });
+    // Onto the other display; its strip lays it out from there.
+    if let Some(display) = combined.display(target.display) {
+        commands.reposition_entity(window, display.bounds().min);
+    }
+    if let Some(neighbour) = neighbour {
+        commands.reshuffle_around(neighbour);
+    }
+    match move_focus {
+        MoveFocus::Follow => {
+            if let Ok(mut entity_commands) = commands.get_entity(target_strip) {
+                entity_commands.try_insert(ActiveWorkspaceMarker);
+            }
+            commands.focus_entity(window, true);
+            commands.reshuffle_around(window);
+        }
+        MoveFocus::Stay => {
+            if let Some(neighbour) = neighbour {
+                commands.focus_entity(neighbour, false);
+            }
+        }
+    }
+}
+
 /// Handles the keybinding to move windows between virtual workspaces.
 /// Missing destinations are created by `handle_virtual_window_moves`. South at
 /// the last row only proceeds when `create_workspace_automatically` is on;
@@ -1216,6 +1229,7 @@ fn move_virtual_workspace_bind(
     windows: Windows,
     active_display: ActiveDisplay,
     workspaces: Query<(Entity, &LayoutStrip, Has<ActiveWorkspaceMarker>)>,
+    combined: crate::ecs::numbering::CombinedWorkspaces,
     config: Res<Config>,
     mut commands: Commands,
 ) {
@@ -1271,11 +1285,41 @@ fn move_virtual_workspace_bind(
             }
             (last_virtual_index, *move_focus)
         }
-        Operation::VirtualMoveNumber(target_virtual_index, move_focus) => {
-            if *target_virtual_index == current_virtual_index {
-                return;
+        // A number is in the combined numbering of every display's
+        // workspaces: one on this Space moves as before, one on another
+        // display moves the window across, and one past the last opens a new
+        // workspace here.
+        Operation::VirtualMoveNumber(number, move_focus) => {
+            let workspaces = combined.list();
+            match usize::try_from(*number)
+                .ok()
+                .and_then(|number| workspaces.get(number).copied())
+            {
+                None => {
+                    let highest = rows.last().map_or(0, |(_, strip, _)| strip.virtual_index);
+                    (highest + 1, *move_focus)
+                }
+                Some(target) => {
+                    let Some(target_strip) = combined.strip(target.strip) else {
+                        return;
+                    };
+                    if target_strip.id() != active_display.active_strip().id() {
+                        move_window_to_display(
+                            focused_entity,
+                            target,
+                            *move_focus,
+                            &combined,
+                            &active_display,
+                            &mut commands,
+                        );
+                        return;
+                    }
+                    if target_strip.virtual_index == current_virtual_index {
+                        return;
+                    }
+                    (target_strip.virtual_index, *move_focus)
+                }
             }
-            (*target_virtual_index, *move_focus)
         }
         _ => return,
     };

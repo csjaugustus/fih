@@ -376,6 +376,7 @@ type MinimapStrips<'w, 's> = Query<
     'w,
     's,
     (
+        Entity,
         &'static LayoutStrip,
         &'static Position,
         Option<&'static RepositionMarker>,
@@ -396,6 +397,7 @@ pub(crate) fn update_minimap(
     clock: Res<Time>,
     mut state: ResMut<MinimapState>,
     manager: Option<NonSendMut<MinimapManager>>,
+    combined: crate::ecs::numbering::CombinedWorkspaces,
 ) {
     let Some(mut manager) = manager else {
         return;
@@ -408,7 +410,7 @@ pub(crate) fn update_minimap(
     {
         state.timer = None;
     }
-    let Some((active_strip, _, _, child_of, _)) = strips.iter().find(|strip| strip.4) else {
+    let Some((_, _, _, _, child_of, _)) = strips.iter().find(|strip| strip.5) else {
         return;
     };
     let Ok((display, dock)) = displays.get(child_of.parent()) else {
@@ -423,17 +425,31 @@ pub(crate) fn update_minimap(
     let viewport = display.actual_display_bounds(dock, &config);
     let focused = focused.iter().next();
     let workspaces = state.shows_every_workspace();
+    // Rows go by the combined numbering of every display's workspaces, the
+    // number the keyboard reaches them by.
+    let numbered = combined.list();
+    let number_of = |entity| {
+        numbered
+            .iter()
+            .position(|workspace| workspace.strip == entity)
+            .and_then(|number| u32::try_from(number).ok())
+    };
     let mut rows = strips
         .iter()
-        .filter(|(strip, _, _, _, active)| *active || workspaces && strip.id() == active_strip.id())
-        .map(|(strip, Position(position), reposition, _, active)| {
-            let strip_x = reposition.map_or(position.x, |target| target.0.x);
-            MinimapRow {
-                virtual_index: strip.virtual_index,
-                active,
-                columns: row_columns(strip, strip_x, viewport, &windows, focused),
-            }
-        })
+        .filter_map(
+            |(entity, strip, Position(position), reposition, _, active)| {
+                let number = number_of(entity)?;
+                if !active && !workspaces {
+                    return None;
+                }
+                let strip_x = reposition.map_or(position.x, |target| target.0.x);
+                Some(MinimapRow {
+                    virtual_index: number,
+                    active,
+                    columns: row_columns(strip, strip_x, viewport, &windows, focused),
+                })
+            },
+        )
         // Workspaces without windows are left out; the current one stays,
         // so it is clear where the switch landed.
         .filter(|row| row.active || !row.columns.is_empty())
