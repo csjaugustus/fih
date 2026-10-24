@@ -1,4 +1,4 @@
-# fih configuration. Copy to ~/.config/fih/fih.toml.
+# fih configuration. Lives at ~/.config/fih/fih.toml.
 #
 # fih reloads this file automatically whenever it changes.
 
@@ -50,6 +50,11 @@ modifier = "ctrl + alt"
 [restore]
 enabled = true
 
+# Strip minimap shown briefly while navigating; click an icon to focus it.
+[decorations.minimap]
+enabled = true
+interactive = true
+
 # Border around the focused window.
 [decorations.active.border]
 enabled = false
@@ -66,16 +71,14 @@ window_focus_east = "ctrl + alt - rightarrow"
 window_focus_north = "ctrl + alt - uparrow"
 window_focus_south = "ctrl + alt - downarrow"
 window_focus_first = "ctrl + alt + cmd - leftarrow"
-# alt - 9 jumps to the last window, like a browser's tabs.
-window_focus_last = ["ctrl + alt + cmd - rightarrow", "alt - 9"]
+window_focus_last = "ctrl + alt + cmd - rightarrow"
 # Move the focused window: add Shift to the focus keys.
 window_swap_west = "ctrl + alt + shift - leftarrow"
 window_swap_east = "ctrl + alt + shift - rightarrow"
 window_swap_north = "ctrl + alt + shift - uparrow"
 window_swap_south = "ctrl + alt + shift - downarrow"
 window_swap_first = "ctrl + alt + cmd + shift - leftarrow"
-# alt + shift - 9 moves the window to the end, like alt - 9 focuses it.
-window_swap_last = ["ctrl + alt + cmd + shift - rightarrow", "alt + shift - 9"]
+window_swap_last = "ctrl + alt + cmd + shift - rightarrow"
 # Center the focused window / cycle preset widths / toggle full width.
 window_center = "ctrl + alt - c"
 window_resize = "ctrl + alt - r"
@@ -96,28 +99,31 @@ window_tabbeddisplay = "ctrl + alt + shift - t"
 window_nextdisplay = "ctrl + alt - n"
 # Stop the window manager.
 quit = "ctrl + alt - q"
-# Jump to a window by its place in the strip (alt - 9 = the last, above).
-window_focus_1 = "alt - 1"
-window_focus_2 = "alt - 2"
-window_focus_3 = "alt - 3"
-window_focus_4 = "alt - 4"
-window_focus_5 = "alt - 5"
-window_focus_6 = "alt - 6"
-window_focus_7 = "alt - 7"
-window_focus_8 = "alt - 8"
-# With shift, move the focused window there.
-window_swap_1 = "alt + shift - 1"
-window_swap_2 = "alt + shift - 2"
-window_swap_3 = "alt + shift - 3"
-window_swap_4 = "alt + shift - 4"
-window_swap_5 = "alt + shift - 5"
-window_swap_6 = "alt + shift - 6"
-window_swap_7 = "alt + shift - 7"
-window_swap_8 = "alt + shift - 8"
+# Workspaces: alt - N switches to workspace N (creating it if needed);
+# alt + shift - N moves the focused window there and follows it.
+window_virtualnum_1 = "alt - 1"
+window_virtualnum_2 = "alt - 2"
+window_virtualnum_3 = "alt - 3"
+window_virtualnum_4 = "alt - 4"
+window_virtualnum_5 = "alt - 5"
+window_virtualnum_6 = "alt - 6"
+window_virtualnum_7 = "alt - 7"
+window_virtualnum_8 = "alt - 8"
+window_virtualnum_9 = "alt - 9"
+window_virtualmovenum_1 = "alt + shift - 1"
+window_virtualmovenum_2 = "alt + shift - 2"
+window_virtualmovenum_3 = "alt + shift - 3"
+window_virtualmovenum_4 = "alt + shift - 4"
+window_virtualmovenum_5 = "alt + shift - 5"
+window_virtualmovenum_6 = "alt + shift - 6"
+window_virtualmovenum_7 = "alt + shift - 7"
+window_virtualmovenum_8 = "alt + shift - 8"
+window_virtualmovenum_9 = "alt + shift - 9"
 # Pin the focused window to the left / right half; press again to unpin.
 window_pin_left = "ctrl + alt - p"
 window_pin_right = "ctrl + alt + shift - p"
-# strip_show = "ctrl + alt - s"
+# Show the strip minimap until pressed again.
+strip_show = "ctrl + alt - s"
 
 [windows]
 
@@ -133,6 +139,8 @@ vertical_padding = 4
 title = '.*'
 bundle_id = "com.tencent.xinWeChat"
 floating = true
+# WeChat reports its main window as a dialog, which fih otherwise leaves alone.
+manage = true
 
 # name: Telegram windows
 [windows.telegram]

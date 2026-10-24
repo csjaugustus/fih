@@ -45,7 +45,6 @@ git clone https://github.com/csjaugustus/fih.git
 cd fih
 cargo run                     # try
 cargo install --path .        # keep
-cp fih.example.toml ~/.config/fih/fih.toml
 ```
 
 macOS ask for Accessibility. Say yes (System Settings → Privacy & Security). Fih need it to move window.
@@ -58,9 +57,8 @@ No worry. Give to AI agent (Claude Code, Codex, any):
 
 ```text
 Install fih for me from https://github.com/csjaugustus/fih. Install Rust with
-rustup if I don't have it, build and install fih with cargo, copy
-fih.example.toml to ~/.config/fih/fih.toml, then start it and walk me through
-giving it Accessibility permission.
+rustup if I don't have it, build and install fih with cargo, then start it and
+walk me through giving it Accessibility permission.
 ```
 
 ## How control
@@ -71,20 +69,25 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 |---|---|
 | ⌃⌥ ← → ↑ ↓ | Go to next window |
 | ⌃⌥⇧ ← → ↑ ↓ | Move window |
-| ⌥ 1–9 | Jump to window. 9 = last. ⇧ = move there |
+| ⌥ 1–9 | Go to workspace 1–9. ⇧ = take window there |
 | ⌃⌥ R | Half or full |
 | ⌃⌥ = / − | Wider / thinner |
 | ⌃⌥ F | Fill screen |
 | ⌃⌥ C | Center |
 | ⌃⌥ P / ⌃⌥⇧ P | Pin left / right. Again = unpin |
 | ⌃⌥ T | Float. Again = back in strip |
+| ⌃⌥ S | Show strip map. Again = hide |
 | ⌃⌥ Q | Quit |
 
-Want other key? Change `~/.config/fih/fih.toml`. Fih see change by itself. No know how? Ask AI.
+Move around, little strip map show at bottom: one icon per window, box = what you see. Click icon, go there.
+
+Chat and settings app (WeChat, Telegram, System Settings, QuickTime, Affinity Publisher) float, not go in strip.
+
+Want other key? Fih make `~/.config/fih/fih.toml` first time. Change it, fih see change by itself. Menu bar fish → **Open Config File** to find it. No know how? Ask AI.
 
 ## Where from
 
-Fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do hard part. Fih add pin, snap, step resize, and fish.
+Fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do hard part. Fih add pin, snap, step resize, strip map, workspace on ⌥ number, and fish.
 
 README talk like [caveman](https://github.com/juliusbrussee/caveman). Good repo. Make AI talk less too.
 

@@ -72,6 +72,12 @@ pub static CONFIGURATION_FILE: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
 
 const DEFAULT_CONFIGURATION: &str = "# fih configuration\n\n[options]\n\n[bindings]\n";
 
+/// What a first launch writes to the configuration file: the documented
+/// example, so a fresh install starts with working shortcuts and floating
+/// rules for the apps that should not tile. A missing file (e.g. under Lua)
+/// still means [`DEFAULT_CONFIGURATION`].
+const STARTER_CONFIGURATION: &str = include_str!("../fih.example.toml");
+
 fn default_configuration_file() -> std::io::Result<PathBuf> {
     let config_home = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -102,7 +108,7 @@ fn create_configuration_file_at(path: &Path) -> std::io::Result<bool> {
 
     match OpenOptions::new().write(true).create_new(true).open(path) {
         Ok(mut file) => {
-            file.write_all(DEFAULT_CONFIGURATION.as_bytes())?;
+            file.write_all(STARTER_CONFIGURATION.as_bytes())?;
             Ok(true)
         }
         Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(false),
@@ -2596,7 +2602,22 @@ fn test_first_launch_creates_parseable_config_without_overwriting_it() {
     let path = directory.join("paneru.toml");
 
     assert!(create_configuration_file_at(&path).unwrap());
-    Config::new(&path).expect("generated configuration should parse");
+    // Bindings resolve through the keyboard layout, which is main-thread
+    // only; parse against the test keymap like the other binding tests.
+    let generated = std::fs::read_to_string(&path).unwrap();
+    let config = Config {
+        inner: Arc::new(ArcSwap::from_pointee(
+            InnerConfig::parse_config_with_virtual_keys(&generated, &test_virtual_keymap())
+                .expect("generated configuration should parse"),
+        )),
+    };
+    assert!(
+        config
+            .find_window_properties("WeChat", "com.tencent.xinWeChat", None, None)
+            .iter()
+            .any(|params| params.floating == Some(true)),
+        "a fresh install floats the default floating apps"
+    );
 
     let custom = "[options]\nauto_center = false\n\n[bindings]\n";
     std::fs::write(&path, custom).unwrap();
@@ -2607,13 +2628,13 @@ fn test_first_launch_creates_parseable_config_without_overwriting_it() {
 }
 
 #[test]
-fn defaults_config_matches_the_generated_stub() {
+fn defaults_config_matches_the_bare_stub() {
     let stub = InnerConfig::new(DEFAULT_CONFIGURATION).expect("the stub should parse");
     let defaults = Config::defaults().expect("defaults should always build");
     assert_eq!(
         format!("{stub:?}"),
         format!("{:?}", defaults.inner.load()),
-        "a missing TOML should behave exactly like the generated stub"
+        "a missing TOML should behave exactly like the bare stub"
     );
 }
 

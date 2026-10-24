@@ -20,7 +20,7 @@ use crate::ecs::state::{
 use crate::ecs::workspace::{PreviousStripPosition, RestoredActivation};
 use crate::ecs::{
     ActiveDisplayMarker, ActiveWorkspaceMarker, Position, RestoreWindowState,
-    SelectedVirtualMarker, SpawnCommandsExt, Unmanaged,
+    SelectedVirtualMarker, SpawnCommandsExt, Unmanaged, WindowProperties,
 };
 use crate::manager::{Application, Display, Window};
 use crate::platform::{Pid, WinID, WorkspaceId};
@@ -380,6 +380,12 @@ pub(crate) fn matches_startup_restore_state(
         return false;
     }
 
+    // A window rule that floats the window wins over a saved layout, so it is
+    // never handed to restore and keeps its floating treatment.
+    if WindowProperties::new(app, window, config).floating() {
+        return false;
+    }
+
     let Ok(pid) = window.pid() else {
         return false;
     };
@@ -433,7 +439,7 @@ pub(super) fn restore_window_state(
         restoration
     };
 
-    let current = current_window_identities(&ctx.windows, &apps, restoration);
+    let current = current_window_identities(&ctx.windows, &apps, restoration, &ctx.config);
     let plan = RestorePlanner::new(restoration).plan(&current);
 
     if plan.consumed_entities.is_empty() {
@@ -597,11 +603,16 @@ fn current_window_identities(
     windows: &Windows,
     apps: &Query<&Application>,
     restoration: &PaneruState,
+    config: &Config,
 ) -> Vec<CurrentWindowIdentity> {
     let mut current = windows
         .managed_iter()
         .filter_map(|(window, entity, child)| {
             let app = apps.get(child.parent()).ok()?;
+            // Floating by rule: restoring it would tile it against the rule.
+            if WindowProperties::new(app, window, config).floating() {
+                return None;
+            }
             Some(CurrentWindowIdentity {
                 entity,
                 window_id: window.id(),
