@@ -81,7 +81,7 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 
 Can whitelist app to float, not go in strip. E.g. Telegram.
 
-Want change any control or setting? Open config file (menu bar fish → **Open Config File**). Not know how change? Ask AI.
+Want change any control or setting? Open config file. Not know how change? Ask AI.
 
 ## Where from
 
