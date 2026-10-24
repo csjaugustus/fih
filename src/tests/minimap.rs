@@ -66,3 +66,27 @@ fn strip_show_toggles_the_minimap() {
             },
         ]);
 }
+
+#[test]
+fn switching_workspaces_does_not_show_the_minimap() {
+    let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
+        .expect("config should parse");
+
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(2)
+        .on_iteration(1, |world, _state| {
+            assert!(
+                !minimap_visible(world),
+                "a workspace switch shows its number, not the strip"
+            );
+        })
+        .run(vec![
+            Event::Command {
+                command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::VirtualNumber(1)),
+            },
+        ]);
+}

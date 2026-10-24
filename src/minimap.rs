@@ -157,8 +157,8 @@ impl MinimapState {
     }
 }
 
-/// Shows the minimap on any window command: focus, swap, resize, workspace
-/// switches and the rest all move around the strip.
+/// Shows the minimap on commands that move around the strip: focus, swap,
+/// resize and the like. Workspace switches have their own number popup.
 pub(crate) fn minimap_on_command(
     mut messages: MessageReader<Event>,
     config: Res<Config>,
@@ -168,12 +168,31 @@ pub(crate) fn minimap_on_command(
         matches!(
             event,
             Event::Command {
-                command: Command::Window(_),
-            }
+                command: Command::Window(operation),
+            } if navigates_strip(operation)
         )
     }) {
         state.poke(&config);
     }
+}
+
+/// Whether `operation` moves around, or reshapes, the current strip.
+fn navigates_strip(operation: &Operation) -> bool {
+    matches!(
+        operation,
+        Operation::Focus(_)
+            | Operation::Swap(_)
+            | Operation::Center
+            | Operation::Resize(_)
+            | Operation::StepWidth(_)
+            | Operation::SetWidth(_)
+            | Operation::FullWidth
+            | Operation::Balance
+            | Operation::Stack(_)
+            | Operation::Pin(_)
+            | Operation::ToggleTabbedDisplay
+            | Operation::Snap
+    )
 }
 
 /// The active strip, while a swipe or scroll is moving it.
@@ -275,7 +294,12 @@ pub(crate) fn update_minimap(
                 focused: focused.is_some_and(|entity| column.window_iter().any(|e| e == entity)),
             })
         })
-        .collect();
+        .collect::<Vec<_>>();
+    // An empty strip has nothing to show, even when toggled on.
+    if columns.is_empty() {
+        manager.hide();
+        return;
+    }
     let viewport = display.actual_display_bounds(dock, &config);
     let snapshot = MinimapSnapshot {
         columns,

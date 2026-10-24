@@ -1320,6 +1320,13 @@ pub(super) fn apply_window_positions(
                 }
                 None => strip.append(entity),
             }
+            // A width from a window rule wins over auto-fill.
+            if ctx.config.auto_fill_width()
+                && properties.width_ratio(None).is_none()
+                && let Ok(mut entity_commands) = ctx.commands.get_entity(entity)
+            {
+                entity_commands.try_insert(crate::ecs::autofill::AutoFillPending);
+            }
         }
 
         // During init, skip per-window reshuffles. finish_setup does a single

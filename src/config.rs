@@ -980,6 +980,12 @@ impl Config {
         self.inner().default_workspaces.unwrap_or(1).max(1)
     }
 
+    pub fn auto_fill_width(&self) -> bool {
+        self.options()
+            .auto_fill_width
+            .is_some_and(|enabled| enabled)
+    }
+
     pub fn insert_windows_mid_strip(&self) -> bool {
         // Default is disabled: appending to the end of the strip is the
         // expected behaviour, especially when moving several windows.
@@ -1411,6 +1417,12 @@ pub struct MainOptions {
     /// shifting the rest) instead of appending it to the end of the strip.
     /// Off by default.
     pub insert_windows_mid_strip: Option<bool>,
+
+    /// Size windows to fill the screen: the first window on an empty
+    /// workspace opens at full width, a second one splits it 50/50 with the
+    /// first, and a window left on its own fills the screen again. Windows
+    /// the user resized are left alone. Off by default.
+    pub auto_fill_width: Option<bool>,
 
     /// If a non-enumerated (e.g. South) gesture or window movement would target a nonexistent
     /// virtual workspace, create the workspace automatically.

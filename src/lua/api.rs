@@ -674,6 +674,7 @@ fn config_to_lua_table(lua: &Lua, config: &Config) -> mlua::Result<Table> {
         disable_native_tabs: _,
         virtual_workspace_animations: _,
         insert_windows_mid_strip: _,
+        auto_fill_width: _,
         create_virtual_workspace_automatically: _,
     } = &raw_opts;
 
@@ -709,6 +710,7 @@ fn config_to_lua_table(lua: &Lua, config: &Config) -> mlua::Result<Table> {
         "insert_windows_mid_strip",
         config.insert_windows_mid_strip(),
     )?;
+    options.set("auto_fill_width", config.auto_fill_width())?;
     options.set(
         "create_virtual_workspace_automatically",
         config.create_workspace_automatically(),

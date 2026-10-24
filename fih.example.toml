@@ -12,6 +12,9 @@ mouse_follows_focus = true
 # --- Layout ---
 # Widths (fractions of the screen) cycled by the Resize shortcut.
 preset_column_widths = [0.5, 1]
+# The first window on a workspace fills the screen, a second one splits it
+# 50/50, and a window left on its own fills it again. Resized ones are kept.
+auto_fill_width = true
 # Centre the focused column on focus change.
 auto_center = false
 

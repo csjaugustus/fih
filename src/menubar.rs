@@ -237,6 +237,8 @@ impl MenuActionTarget {
 }
 
 const MENU_BAR_SPACING: CGFloat = 5.0;
+/// Height of the descriptor mark or SF Symbol in the menu bar.
+const DESCRIPTOR_SYMBOL_HEIGHT: CGFloat = 13.0;
 const BADGE_SPACING: CGFloat = 4.0;
 const BADGE_RADIUS: CGFloat = 4.0;
 const BADGE_PADDING: CGFloat = 4.0;
@@ -834,16 +836,24 @@ impl MenuBarManager {
         } else {
             1.0
         };
-        let scaled = CGSize::new(14.0 * aspect_ratio, 14.0);
+        let scaled = CGSize::new(
+            DESCRIPTOR_SYMBOL_HEIGHT * aspect_ratio,
+            DESCRIPTOR_SYMBOL_HEIGHT,
+        );
         image.setSize(scaled);
 
         let image_view = NSImageView::new(self.mtm);
         image_view.setImage(Some(&image));
         image_view.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
         image_view.setFrameSize(scaled);
-        if config.menubar_has_external_gradient() {
-            image_view.setContentTintColor(Some(&*NSColor::whiteColor()));
-        }
+        // Solid, not the default label colour: the menu bar image is a
+        // template that takes only alpha from this render, and the label
+        // colour's ~85% alpha would draw the mark grey beside other icons.
+        image_view.setContentTintColor(Some(&*if config.menubar_has_external_gradient() {
+            NSColor::whiteColor()
+        } else {
+            NSColor::blackColor()
+        }));
         Some(image_view)
     }
 

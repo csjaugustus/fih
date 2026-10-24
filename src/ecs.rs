@@ -39,6 +39,7 @@ use crate::manager::{
 use crate::overlay::{FlashMessageManager, OverlayManager};
 use crate::platform::{Modifiers, PlatformCallbacks, WinID, WorkspaceId};
 
+pub mod autofill;
 pub mod display;
 pub mod focus;
 pub mod layout;
@@ -337,6 +338,13 @@ pub fn register_triggers(app: &mut bevy::app::App) {
         triggers::window_focused_trigger
             .in_set(UpdateSet::Focus)
             .before(focus::fix_window_size_on_focus),
+    );
+    app.add_systems(
+        Update,
+        autofill::auto_fill_widths
+            .in_set(UpdateSet::Focus)
+            .after(triggers::window_focused_trigger)
+            .run_if(|config: Res<Config>| config.auto_fill_width()),
     );
     app.add_observer(triggers::window_unmanaged_trigger)
         .add_observer(triggers::window_managed_trigger)

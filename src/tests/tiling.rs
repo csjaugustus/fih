@@ -1160,3 +1160,106 @@ fn test_full_width_centers_and_fills_viewport_when_window_was_partially_offscree
         })
         .run(commands);
 }
+
+fn auto_fill_window_width(world: &mut World, window_id: i32) -> i32 {
+    let entity = find_window_entity(window_id, world);
+    world
+        .get::<crate::manager::Window>(entity)
+        .unwrap()
+        .frame()
+        .width()
+}
+
+fn spawn_runtime_window(harness: &mut TestHarness, id: i32) {
+    let frame = IRect::new(0, 0, TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT);
+    let window = harness
+        .mock_state
+        .spawn_window(TEST_PROCESS_ID, TEST_WORKSPACE_ID, id, frame);
+    harness
+        .app
+        .world_mut()
+        .trigger(SpawnWindowTrigger(vec![window]));
+}
+
+#[test]
+fn auto_fill_fills_one_window_and_halves_two() {
+    let config: Config = (
+        MainOptions {
+            auto_fill_width: Some(true),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+    let mut harness = TestHarness::new().with_config(config).with_windows(0);
+    harness.advance(Duration::from_millis(100));
+
+    spawn_runtime_window(&mut harness, 0);
+    harness.advance(Duration::from_millis(500));
+    assert_eq!(
+        auto_fill_window_width(harness.world(), 0),
+        TEST_DISPLAY_WIDTH,
+        "the first window on an empty workspace fills the screen"
+    );
+
+    spawn_runtime_window(&mut harness, 1);
+    harness.advance(Duration::from_millis(500));
+    assert_eq!(
+        auto_fill_window_width(harness.world(), 0),
+        TEST_DISPLAY_WIDTH / 2
+    );
+    assert_eq!(
+        auto_fill_window_width(harness.world(), 1),
+        TEST_DISPLAY_WIDTH / 2,
+        "a second window splits the screen with the first"
+    );
+
+    harness.mock_state.os_vanish_window(1);
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::WindowDestroyed {
+            window_id: 1,
+            source: DestroySource::SpaceNotification,
+        });
+    harness.advance(Duration::from_millis(500));
+    assert_eq!(
+        auto_fill_window_width(harness.world(), 0),
+        TEST_DISPLAY_WIDTH,
+        "a window left on its own fills the screen again"
+    );
+}
+
+#[test]
+fn auto_fill_leaves_a_resized_window_alone() {
+    let config: Config = (
+        MainOptions {
+            auto_fill_width: Some(true),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+    let mut harness = TestHarness::new().with_config(config).with_windows(0);
+    harness.advance(Duration::from_millis(100));
+    spawn_runtime_window(&mut harness, 0);
+    harness.advance(Duration::from_millis(500));
+
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::Command {
+            command: Command::Window(Operation::StepWidth(ResizeDirection::Shrink)),
+        });
+    harness.advance(Duration::from_millis(500));
+    let resized = auto_fill_window_width(harness.world(), 0);
+    assert!(resized < TEST_DISPLAY_WIDTH);
+
+    spawn_runtime_window(&mut harness, 1);
+    harness.advance(Duration::from_millis(500));
+    assert_eq!(
+        auto_fill_window_width(harness.world(), 0),
+        resized,
+        "a window the user resized keeps its width"
+    );
+}
