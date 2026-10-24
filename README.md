@@ -25,17 +25,25 @@
 
 Window sit side by side on strip. Strip go right forever. Screen is little hole you look through. Swipe four finger or press key, strip slide. Window you want slide into hole.
 
-Left right = slide in workspace. Up down = switch workspace. Each workspace own strip. Is like many monitor, but cost zero.
+Left right = slide in workspace. Up down = switch workspace, go round and round. Each workspace own strip. Is like many monitor, but cost zero.
 
-Need one window always there? Pin it. It hold left or right half. Rest of strip slide in other half.
+Have laptop and monitor? Workspace on both share one number line. Keyboard go everywhere.
 
-One window, fih make it fill screen. Open second, both take half. Fih no make you drag edge.
+Screen cut in 2 or 3 column (laptop 2, monitor 3, change in menu bar). Window fill the column, fill empty space. One window = full. Close one, rest grow. Open one, rest shrink. Fih no make you drag edge. Make window full on purpose? Fih leave it full.
+
+Need one window always there? Pin it. It hold one column at left or right. Rest of strip slide beside it.
+
+Teal line = window you on. Orange line = pinned window. Mouse come with you when you move by keyboard.
 
 ## Strip map
 
 Move, little map show at bottom. One icon per window. Teal = where you are. Faded = off screen. Lock = pinned. Number at left = which workspace.
 
 Go up down, map show all workspace, one row each.
+
+## Menu bar
+
+Fish show workspace number. Click fish: see what open where, pick 2 or 3 column, reset width, open config.
 
 ## Get
 
@@ -68,11 +76,11 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 
 | Key | Do |
 |---|---|
-| ⌃⌥ ← → | Go to next window |
+| ⌃⌥ ← → | Go to next window. On floating window: put it away, back to strip |
 | ⌃⌥ ↑ ↓ | Go to next workspace with window in it |
 | ⌃⌥⇧ ← → | Move window |
 | ⌥ 1–9 | Go to workspace 1–9. ⇧ = take window there |
-| ⌃⌥ R | Half or full |
+| ⌃⌥ R | One column or full |
 | ⌃⌥ F | Fill screen |
 | ⌃⌥ C | Center |
 | ⌃⌥ P / ⌃⌥⇧ P | Pin left / right. Again = unpin |
@@ -85,7 +93,7 @@ Want other key? Fih make `~/.config/fih/fih.toml` first time. Change it, fih see
 
 ## Where from
 
-Fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do hard part. Fih add pin, snap, strip map, up-and-down strip, auto fill, and fish.
+Fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do hard part. Fih add pin, snap, strip map, up-and-down strip, column, auto fill, and fish.
 
 README talk like [caveman](https://github.com/juliusbrussee/caveman). Good repo. Make AI talk less too.
 
