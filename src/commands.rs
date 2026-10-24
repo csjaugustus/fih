@@ -16,7 +16,7 @@ mod query;
 
 use crate::config::Config;
 use crate::config::snippet::{RuleSubject, SnippetDialect, window_rule_snippet};
-use crate::ecs::autofill::{AutoFillWidth, fill_width};
+use crate::ecs::autofill::{WidthIntent, fill_width};
 use crate::ecs::display::FloatingLayer;
 use crate::ecs::focus::{FocusHistory, PageHapticRequest};
 use crate::ecs::layout::{
@@ -960,6 +960,11 @@ fn resize_window(
         _ => return,
     };
 
+    if config.auto_fill_width() && record_width_intent(operation, next_ratio, entity, &mut commands)
+    {
+        return;
+    }
+
     let mut new_width = round_px(next_ratio * f64::from(display_width));
     if pinned {
         new_width = new_width.min(viewport.width());
@@ -984,6 +989,27 @@ fn resize_window(
 
     commands.resize_entity(entity, size);
     commands.reshuffle_around(entity);
+}
+
+/// With auto-fill, a resize says what the window means to be: toggled up to
+/// full width it stays full, toggled back it fills again, and stepped it
+/// keeps the width it is given. Returns whether auto-fill now sizes it, so
+/// the resize itself is left to it.
+fn record_width_intent(
+    operation: &Operation,
+    next_ratio: f64,
+    entity: Entity,
+    commands: &mut Commands,
+) -> bool {
+    let (intent, auto_filled) = match operation {
+        Operation::Resize(_) if next_ratio < 1.0 => (WidthIntent::Fill, true),
+        Operation::Resize(_) => (WidthIntent::Full, false),
+        _ => (WidthIntent::Manual, false),
+    };
+    if let Ok(mut cmds) = commands.get_entity(entity) {
+        cmds.try_insert(intent);
+    }
+    auto_filled
 }
 
 /// Cycles the focused window's height through `preset_stack_heights`, letting
@@ -1127,6 +1153,10 @@ fn full_width_window(
     if let Some(marker) = windows.full_width(entity) {
         if let Ok(mut entity_commands) = commands.get_entity(entity) {
             entity_commands.try_remove::<FullWidthMarker>();
+            // Back from full width, it fills again.
+            if config.auto_fill_width() {
+                entity_commands.try_insert(WidthIntent::Fill);
+            }
         }
         let w = round_px(marker.width_ratio * f64::from(viewport.width()));
         let bounds = active_display.actual_bounds(&config).size().with_x(w);
@@ -1145,6 +1175,9 @@ fn full_width_window(
         let width_ratio = windows.width_ratio(entity).unwrap_or(0.5);
         if let Ok(mut entity_commands) = commands.get_entity(entity) {
             entity_commands.try_insert(FullWidthMarker { width_ratio });
+            if config.auto_fill_width() {
+                entity_commands.try_insert(WidthIntent::Full);
+            }
         }
         commands.resize_entity(entity, Size::new(viewport.width(), viewport.height()));
         commands.reshuffle_around(entity);
@@ -1550,7 +1583,8 @@ fn strip_columns_and_widths(
         match operation {
             Operation::SetColumns(count) => {
                 let strip = active_display.active_strip();
-                if strip.column_count() != *count {
+                // Auto-fill resizes the filling windows for the new count itself.
+                if strip.column_count() != *count && !config.auto_fill_width() {
                     reset.get_or_insert(true);
                 }
                 strip.set_column_count(*count);
@@ -1605,7 +1639,7 @@ fn strip_columns_and_widths(
             // Sized as auto-fill would, so it keeps filling as windows come
             // and go.
             if let Ok(mut cmds) = commands.get_entity(entity) {
-                cmds.try_insert(AutoFillWidth(width));
+                cmds.try_insert(WidthIntent::Fill);
             }
         }
     }

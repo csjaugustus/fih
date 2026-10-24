@@ -19,6 +19,7 @@ use super::{
     Timeout, Unmanaged,
 };
 use crate::config::Config;
+use crate::ecs::autofill::WidthIntent;
 use crate::ecs::focus::FocusHistory;
 use crate::ecs::layout::LayoutStrip;
 use crate::ecs::params::{ActiveDisplay, GlobalState, WindowCtx, Windows};
@@ -1320,12 +1321,15 @@ pub(super) fn apply_window_positions(
                 }
                 None => strip.append(entity),
             }
-            // A width from a window rule wins over auto-fill.
+            // A new window fills, unless a window rule gives it a width.
             if ctx.config.auto_fill_width()
-                && properties.width_ratio(None).is_none()
                 && let Ok(mut entity_commands) = ctx.commands.get_entity(entity)
             {
-                entity_commands.try_insert(crate::ecs::autofill::AutoFillPending);
+                entity_commands.try_insert(if properties.width_ratio(None).is_some() {
+                    WidthIntent::Manual
+                } else {
+                    WidthIntent::Fill
+                });
             }
         }
 

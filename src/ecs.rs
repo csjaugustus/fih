@@ -345,7 +345,8 @@ pub fn register_triggers(app: &mut bevy::app::App) {
         autofill::auto_fill_widths
             .in_set(UpdateSet::Focus)
             .after(triggers::window_focused_trigger)
-            .run_if(|config: Res<Config>| config.auto_fill_width()),
+            .run_if(|config: Res<Config>| config.auto_fill_width())
+            .run_if(autofill::fill_inputs_changed),
     );
     app.add_observer(triggers::window_unmanaged_trigger)
         .add_observer(triggers::window_managed_trigger)

@@ -1486,3 +1486,75 @@ fn auto_filled_windows_all_land_in_view() {
         );
     }
 }
+
+/// A window made full width on purpose stays full as windows come and go and
+/// the column count changes; the filling windows share what is left. Only
+/// resetting the widths makes it fill again.
+#[test]
+fn a_window_made_full_on_purpose_keeps_its_width() {
+    let config = Config::try_from(
+        "[options]\nauto_fill_width = true\nauto_center = false\n[swipe]\ncontinuous = false\n[bindings]\n",
+    )
+    .expect("config should parse");
+    let mut harness = TestHarness::new().with_config(config).with_windows(0);
+    harness.advance(Duration::from_millis(100));
+    let command = |harness: &mut TestHarness, operation| {
+        harness
+            .app
+            .world_mut()
+            .write_message::<Event>(Event::Command {
+                command: Command::Window(operation),
+            });
+        harness.advance(Duration::from_millis(500));
+    };
+    let width = |harness: &mut TestHarness, id| auto_fill_window_width(harness.world(), id);
+    command(&mut harness, Operation::SetColumns(3));
+
+    spawn_runtime_window(&mut harness, 0);
+    harness.advance(Duration::from_millis(500));
+    spawn_runtime_window(&mut harness, 1);
+    harness.advance(Duration::from_millis(500));
+    let half = TEST_DISPLAY_WIDTH / 2;
+    assert_eq!(
+        [width(&mut harness, 0), width(&mut harness, 1)],
+        [half, half]
+    );
+
+    // Window 1 has focus: toggle it up to full width, on purpose.
+    command(&mut harness, Operation::Resize(ResizeDirection::Grow));
+    assert_eq!(width(&mut harness, 1), TEST_DISPLAY_WIDTH);
+    assert_eq!(
+        width(&mut harness, 0),
+        TEST_DISPLAY_WIDTH,
+        "the one window left filling takes the screen"
+    );
+
+    // A new window shares with window 0; window 1 stays full.
+    spawn_runtime_window(&mut harness, 2);
+    harness.advance(Duration::from_millis(500));
+    assert_eq!(
+        width(&mut harness, 1),
+        TEST_DISPLAY_WIDTH,
+        "full on purpose stays full"
+    );
+    assert_eq!(
+        [width(&mut harness, 0), width(&mut harness, 2)],
+        [half, half]
+    );
+
+    // A column change leaves it too.
+    command(&mut harness, Operation::SetColumns(2));
+    assert_eq!(width(&mut harness, 1), TEST_DISPLAY_WIDTH);
+
+    // Closing a filling window: the other fills the gap.
+    close_runtime_window(&mut harness, 2);
+    assert_eq!(width(&mut harness, 0), TEST_DISPLAY_WIDTH);
+    assert_eq!(width(&mut harness, 1), TEST_DISPLAY_WIDTH);
+
+    // Reset widths makes every window fill again.
+    command(&mut harness, Operation::ResetWidths);
+    assert_eq!(
+        [width(&mut harness, 0), width(&mut harness, 1)],
+        [half, half]
+    );
+}
