@@ -380,6 +380,51 @@ fn test_scrolling() {
         .run(commands);
 }
 
+/// The same swipe as [`test_scrolling`], with `[swipe] snap = true`: instead of
+/// resting mid-scroll at -186, the strip settles at the nearest snap point,
+/// which leaves window 2 flush with the right edge.
+#[test]
+fn test_scrolling_snaps_to_nearest_column_edge() {
+    let commands = vec![
+        Event::MenuOpened { window_id: 0 },
+        Event::Command {
+            command: Command::Window(Operation::Focus(Direction::Last)),
+        },
+        Event::Command {
+            command: Command::Window(Operation::Focus(Direction::First)),
+        },
+        Event::Command {
+            command: Command::PrintState,
+        },
+        Event::Swipe {
+            delta: 0.04,
+            fingers: 3,
+            distance_cm: 0.0,
+        },
+        Event::Command {
+            command: Command::PrintState,
+        },
+    ];
+
+    let config =
+        Config::try_from("[swipe]\nsnap = true\n\n[swipe.gesture]\nfingers_count = 3\n").unwrap();
+
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(3)
+        .on_iteration(5, move |world, _state| {
+            assert_window_at!(world, 0, -176, TEST_MENUBAR_HEIGHT);
+            assert_window_at!(world, 1, 224, TEST_MENUBAR_HEIGHT);
+            assert_window_at!(
+                world,
+                2,
+                TEST_DISPLAY_WIDTH - TEST_WINDOW_WIDTH,
+                TEST_MENUBAR_HEIGHT
+            );
+        })
+        .run(commands);
+}
+
 #[test]
 fn paging_waits_for_distance_then_focuses_without_free_scrolling() {
     let config = Config::try_from(

@@ -738,6 +738,14 @@ impl Config {
             .unwrap_or(true)
     }
 
+    pub fn swipe_snap(&self) -> bool {
+        self.inner()
+            .swipe
+            .as_ref()
+            .and_then(|swipe| swipe.snap)
+            .unwrap_or(false)
+    }
+
     pub fn swipe_deceleration(&self) -> f64 {
         let config = self.inner();
         config

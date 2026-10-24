@@ -19,13 +19,13 @@ use crate::ecs::layout::{Column, LayoutStrip};
 use crate::ecs::params::{ActiveDisplay, Windows};
 use crate::ecs::{
     ActiveWorkspaceMarker, ManualStripOffset, MissionControlActive, Position, PreUpdateSet,
-    Scrolling, SendMessageTrigger, UpdateSet,
+    RepositionMarker, Scrolling, SendMessageTrigger, UpdateSet,
 };
 use crate::errors::Result;
 use bevy::ecs::schedule::common_conditions::on_message;
 
 use crate::events::{Event, InputEvent};
-use crate::manager::{Window, WindowManager};
+use crate::manager::{Origin, Window, WindowManager};
 use crate::platform::Modifiers;
 use crate::util::round_px;
 
@@ -413,10 +413,68 @@ fn swipe_gesture(
     }
 }
 
+/// Each column's layout x and width, the input to [`snap_targets`].
+fn column_spans(strip: &LayoutStrip, windows: &Windows) -> Vec<(i32, i32)> {
+    strip
+        .all_columns()
+        .into_iter()
+        .filter_map(|entity| {
+            let x = windows.layout_position(entity)?.0.x;
+            let width = windows.moving_frame(entity).map_or(0, |f| f.width());
+            Some((x, width))
+        })
+        .collect()
+}
+
+/// Strip offsets that leave a column flush left, centred, or flush right in
+/// `viewport`. With `centred_only`, just the centred ones — the `auto_center`
+/// pull.
+fn snap_targets(columns: &[(i32, i32)], viewport: &IRect, centred_only: bool) -> Vec<i32> {
+    let center = viewport.center().x;
+    columns
+        .iter()
+        .flat_map(|&(x, width)| {
+            let centred = center - (x + width / 2);
+            if centred_only {
+                vec![centred]
+            } else {
+                vec![viewport.min.x - x, centred, viewport.max.x - (x + width)]
+            }
+        })
+        .collect()
+}
+
+/// The sign the integrator applies to `Scrolling::velocity`.
+fn gesture_direction_modifier(config: &Config) -> f64 {
+    match config.swipe_gesture_direction() {
+        SwipeGestureDirection::Natural => -1.0,
+        SwipeGestureDirection::Reversed => 1.0,
+    }
+}
+
+/// Where the remaining momentum would leave the strip on its own: the
+/// integrator moves `velocity * width * direction` per second while
+/// `apply_inertia` decays the velocity at `deceleration` per second.
+fn projected_rest(scroll: &Scrolling, viewport_width: f64, config: &Config) -> f64 {
+    scroll.position
+        + scroll.velocity * viewport_width * gesture_direction_modifier(config)
+            / config.swipe_deceleration()
+}
+
+/// The target closest to `offset`, if there are any.
+fn nearest_snap_target(offset: i32, targets: &[i32]) -> Option<i32> {
+    targets
+        .iter()
+        .copied()
+        .min_by_key(|target| (offset - target).abs())
+}
+
 #[instrument(level = Level::TRACE, skip_all)]
 pub(super) fn swiping_timeout(
-    strips: Populated<(Entity, &mut Scrolling), With<LayoutStrip>>,
+    strips: Populated<(Entity, &LayoutStrip, &Position, &mut Scrolling)>,
     active_display: ActiveDisplay,
+    windows: Windows,
+    config: Res<Config>,
     time: Res<Time>,
     window_manager: Res<WindowManager>,
     mut commands: Commands,
@@ -428,7 +486,7 @@ pub(super) fn swiping_timeout(
     let dt = time.delta_secs_f64().min(MAX_STEP_SECS);
     let viewport_width = f64::from(active_display.bounds().width());
 
-    for (entity, mut scroll) in strips {
+    for (entity, strip, position, mut scroll) in strips {
         if time.elapsed().abs_diff(scroll.last_event) > FINGER_LIFT_THRESHOLD {
             scroll.is_user_swiping = false;
 
@@ -436,6 +494,31 @@ pub(super) fn swiping_timeout(
                 && let Ok(mut entity_commands) = commands.get_entity(entity)
             {
                 entity_commands.try_remove::<Scrolling>();
+
+                // The snap force may not have closed the gap before momentum
+                // ran out, so finish the settle as an animated reposition.
+                if config.swipe_snap() {
+                    let viewport = active_display.actual_bounds(&config);
+                    let targets = snap_targets(&column_spans(strip, &windows), &viewport, false);
+                    let get_window_frame = |entity| windows.moving_frame(entity);
+                    let rest = projected_rest(&scroll, f64::from(viewport.width()), &config);
+                    if let Some(target) =
+                        nearest_snap_target(round_px(rest), &targets).and_then(|target| {
+                            clamp_viewport_offset(
+                                target,
+                                strip,
+                                &windows,
+                                &get_window_frame,
+                                &viewport,
+                                &config,
+                            )
+                        })
+                        && target != position.x
+                    {
+                        entity_commands
+                            .try_insert(RepositionMarker(Origin::new(target, position.y)));
+                    }
+                }
             }
             if let Some(point) = window_manager.cursor_position() {
                 commands.trigger(SendMessageTrigger(Event::MouseMoved {
@@ -482,34 +565,37 @@ fn apply_snap_force(
     const CENTER_MAGNETIC_FORCE: f64 = 10.0;
     const SNAP_DISPLAY_RATIO: f64 = 0.45;
 
+    let viewport = active_display.actual_bounds(&config);
+    let (strip, position, ref mut scroll) = *strip;
+
+    if config.swipe_snap() {
+        if scroll.is_user_swiping {
+            return;
+        }
+        let width = f64::from(viewport.width());
+        let rest = projected_rest(scroll, width, &config);
+
+        let targets = snap_targets(&column_spans(strip, &windows), &viewport, false);
+        if let Some(target) = nearest_snap_target(round_px(rest), &targets) {
+            // Re-aim the glide so the same decay lands it on the target. Run
+            // every frame, this also corrects the drift of the discrete steps.
+            scroll.velocity = (f64::from(target) - scroll.position) * config.swipe_deceleration()
+                / (width * gesture_direction_modifier(&config));
+        }
+        return;
+    }
+
     if !config.auto_center() {
         return;
     }
 
-    let viewport = active_display.actual_bounds(&config);
-    let viewport_center = viewport.center().x;
     let snap_threshold = SNAP_DISPLAY_RATIO * f64::from(viewport.width());
-
-    let (strip, position, ref mut scroll) = *strip;
     if scroll.is_user_swiping || scroll.velocity.abs() > 0.5 {
         return;
     }
 
-    let target_offset = strip
-        .all_columns()
-        .into_iter()
-        .filter_map(|entity| {
-            windows
-                .layout_position(entity)
-                .map(|p| p.0.x)
-                .zip(Some(entity))
-        })
-        .map(|(position, entity)| {
-            let col_width = windows.moving_frame(entity).map_or(0, |f| f.width());
-            viewport_center - (position + col_width / 2)
-        })
-        .min_by_key(|target| (position.x - target).abs())
-        .unwrap_or(position.x);
+    let targets = snap_targets(&column_spans(strip, &windows), &viewport, true);
+    let target_offset = nearest_snap_target(position.x, &targets).unwrap_or(position.x);
 
     let dist_to_snap = f64::from(position.x - target_offset);
     if dist_to_snap.abs() < snap_threshold {
@@ -695,4 +781,32 @@ fn switch_virtual_workspace(delta: f64, config: &Config, commands: &mut Commands
     commands.trigger(SendMessageTrigger(Event::Command {
         command: Command::Window(Operation::Virtual(direction)),
     }));
+}
+
+#[cfg(test)]
+mod snap_tests {
+    use super::*;
+
+    const VIEWPORT: IRect = IRect {
+        min: bevy::math::IVec2::new(0, 0),
+        max: bevy::math::IVec2::new(1000, 800),
+    };
+
+    #[test]
+    fn every_column_offers_left_centre_and_right() {
+        let columns = [(0, 400), (400, 600)];
+        assert_eq!(
+            snap_targets(&columns, &VIEWPORT, false),
+            vec![0, 300, 600, -400, -200, 0]
+        );
+        assert_eq!(snap_targets(&columns, &VIEWPORT, true), vec![300, -200]);
+    }
+
+    #[test]
+    fn nearest_target_wins() {
+        let targets = [0, 300, 600, -400, -200];
+        assert_eq!(nearest_snap_target(-260, &targets), Some(-200));
+        assert_eq!(nearest_snap_target(420, &targets), Some(300));
+        assert_eq!(nearest_snap_target(10, &[]), None);
+    }
 }

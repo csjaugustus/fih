@@ -733,6 +733,7 @@ fn config_to_lua_table(lua: &Lua, config: &Config) -> mlua::Result<Table> {
         sensitivity: _,
         deceleration: _,
         continuous: _,
+        snap: _,
         gesture: _,
         scroll: _,
     } = SwipeOptions::default();
@@ -740,6 +741,7 @@ fn config_to_lua_table(lua: &Lua, config: &Config) -> mlua::Result<Table> {
     swipe.set("sensitivity", config.swipe_sensitivity())?;
     swipe.set("deceleration", config.swipe_deceleration())?;
     swipe.set("continuous", config.continuous_swipe())?;
+    swipe.set("snap", config.swipe_snap())?;
 
     let GestureOptions {
         fingers_count: _,

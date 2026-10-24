@@ -34,6 +34,11 @@ pub struct SwipeOptions {
     #[allow(dead_code)]
     pub continuous: Option<bool>,
 
+    /// When a swipe comes to rest, settle the strip so the nearest column is
+    /// flush left, centred or flush right instead of wherever momentum left
+    /// it. Default: false.
+    pub snap: Option<bool>,
+
     pub gesture: Option<GestureOptions>,
     pub scroll: Option<ScrollOptions>,
 }
