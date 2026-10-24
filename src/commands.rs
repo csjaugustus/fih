@@ -1530,9 +1530,14 @@ fn balance_strip(
     commands.reshuffle_around(focused_entity);
 }
 
-/// Lays the active workspace out in the chosen number of columns. Nothing
-/// resizes yet: the resize and reset widths commands keep to it from here.
-fn set_strip_columns(mut messages: MessageReader<Event>, mut active_display: ActiveDisplayMut) {
+/// Lays the active workspace out in the chosen number of columns. Changing
+/// the count resets every window to one column of it; from then on the
+/// resize and reset widths commands keep to it.
+fn set_strip_columns(
+    mut messages: MessageReader<Event>,
+    mut active_display: ActiveDisplayMut,
+    mut commands: Commands,
+) {
     let Some(&count) =
         filter_window_operations(&mut messages, |op| matches!(op, Operation::SetColumns(_)))
             .find_map(|op| match op {
@@ -1542,7 +1547,14 @@ fn set_strip_columns(mut messages: MessageReader<Event>, mut active_display: Act
     else {
         return;
     };
-    active_display.active_strip().set_column_count(count);
+    let strip = active_display.active_strip();
+    let changed = strip.column_count() != count;
+    strip.set_column_count(count);
+    if changed {
+        commands.trigger(SendMessageTrigger(Event::Command {
+            command: Command::Window(Operation::ResetWidths),
+        }));
+    }
 }
 
 /// Sets every column in the active strip to one column of its layout, the

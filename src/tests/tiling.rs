@@ -1306,8 +1306,8 @@ fn three_columns_make_resize_and_reset_use_thirds() {
         harness.advance(Duration::from_millis(500));
     };
 
+    // Switching to a different column count resets the widths to it.
     command(&mut harness, Operation::SetColumns(3));
-    command(&mut harness, Operation::ResetWidths);
     for window_id in 0..3 {
         assert_eq!(
             auto_fill_window_width(harness.world(), window_id),
@@ -1331,4 +1331,9 @@ fn three_columns_make_resize_and_reset_use_thirds() {
     assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH);
     command(&mut harness, Operation::Resize(ResizeDirection::Grow));
     assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH / 3);
+
+    // Choosing the count it already has leaves the widths alone.
+    command(&mut harness, Operation::Resize(ResizeDirection::Grow));
+    command(&mut harness, Operation::SetColumns(3));
+    assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH);
 }

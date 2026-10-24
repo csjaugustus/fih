@@ -283,7 +283,7 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_equalize` | Make all windows in a stack equal height. |
 | `window_balance` | Make all columns in the strip the same width as the focused window. |
 | `window_resetwidths` | Set every column in the current workspace to one column of its layout: half the display width with 2 columns (the default), a third with 3 (also in the menu bar menu as **Reset Widths**). |
-| `window_columns_<count>` | Lay the current workspace out in `<count>` columns (the menu bar menu offers 2 and 3), so `window_resize` toggles between one column and the full width. Nothing resizes until you resize or reset widths. |
+| `window_columns_<count>` | Lay the current workspace out in `<count>` columns (the menu bar menu offers 2 and 3), so `window_resize` toggles between one column and the full width. Switching to a different count resets every window to one column of it. |
 | `window_nextdisplay` | Move focused window to the next monitor and follow it. |
 | `window_nextdisplaysend` | Move focused window to the next monitor but stay on current. |
 | `mouse_nextdisplay` | Warp mouse cursor to the next monitor. |
