@@ -62,16 +62,6 @@ macOS ask for Accessibility. Say yes (System Settings → Privacy & Security). F
 
 Run all time: `fih install && fih start`.
 
-### What that means?
-
-No worry. Give to AI agent (Claude Code, Codex, any):
-
-```text
-Install fih for me from https://github.com/csjaugustus/fih. Install Rust with
-rustup if I don't have it, build and install fih with cargo, then start it and
-walk me through giving it Accessibility permission.
-```
-
 ## How control
 
 Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
