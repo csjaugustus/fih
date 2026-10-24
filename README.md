@@ -7,7 +7,7 @@
 
 # why many monitor when one do trick
 
-**fih put all window in one long strip. Slide strip. Window come, quick like fih. No second monitor. No third. Minimalmaxxing.**
+**fih put all window in one long strip. Slide strip. Window come, quick like fih. No second monitor. No third. Much focus.**
 
 </div>
 
@@ -29,21 +29,13 @@ Left right = slide in workspace. Up down = switch workspace, go round and round.
 
 Have laptop and monitor? Workspace on both share one number line. Keyboard go everywhere.
 
-Screen cut in 2 or 3 column (laptop 2, monitor 3, change in menu bar). Window fill the column, fill empty space. One window = full. Close one, rest grow. Open one, rest shrink. Fih no make you drag edge. Make window full on purpose? Fih leave it full.
-
 Need one window always there? Pin it. It hold one column at left or right. Rest of strip slide beside it.
-
-Teal line = window you on. Orange line = pinned window. Mouse come with you when you move by keyboard.
 
 ## Strip map
 
-Move, little map show at bottom. One icon per window. Teal = where you are. Faded = off screen. Lock = pinned. Number at left = which workspace.
+Move, little map show at bottom. One icon per window.
 
 Go up down, map show all workspace, one row each.
-
-## Menu bar
-
-Fish show workspace number. Click fish: see what open where, pick 2 or 3 column, reset width, open config.
 
 ## Get
 
@@ -55,7 +47,7 @@ Ready app go in [Releases](https://github.com/csjaugustus/fih/releases).
 
 Fih live in menu bar now. Start by itself at login. New version? Replace app, open again.
 
-Go away: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to Bin.
+How delete: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to Bin.
 
 ### If you nerd
 
@@ -87,9 +79,9 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 | ⌃⌥ T | Float. Again = back in strip |
 | ⌃⌥ Q | Quit |
 
-Chat and settings app (WeChat, Telegram, System Settings, QuickTime, Affinity Publisher) float, not go in strip.
+Can whitelist app to float, not go in strip. E.g. Telegram.
 
-Want other key? Fih make `~/.config/fih/fih.toml` first time. Change it, fih see change by itself. Menu bar fish → **Open Config File** to find it. No know how? Ask AI.
+Want change any control or setting? Open config file (menu bar fish → **Open Config File**). Not know how change? Ask AI.
 
 ## Where from
 
