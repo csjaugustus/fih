@@ -921,7 +921,7 @@ pub fn request_ax_privilege() -> bool {
     }
 }
 
-/// Resets the TCC Accessibility entry for Paneru (`com.github.karinushka.paneru`).
+/// Resets the TCC Accessibility entry for Paneru (`com.github.csjaugustus.raven`).
 ///
 /// Rebuilding the binary or switching between Homebrew and Cargo changes the
 /// ad-hoc code-signing hash (`cdhash`), leaving a stale TCC entry that

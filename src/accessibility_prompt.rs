@@ -34,13 +34,13 @@ fn accessibility_informative_text(
 ) -> String {
     let pane = permission_pane_name_for_macos(is_macos_27_or_newer);
     let binary = binary_path.map_or_else(
-        || "paneru".to_string(),
-        |path| format!("paneru ({})", path.display()),
+        || "raven".to_string(),
+        |path| format!("raven ({})", path.display()),
     );
     format!(
-        "Paneru needs {pane} permission to move, resize, and arrange windows.\n\n\
+        "Raven needs {pane} permission to move, resize, and arrange windows.\n\n\
          In System Settings, open Privacy & Security → {pane}, then turn on {binary}.\n\n\
-         If Paneru is already enabled after an update or switching between Homebrew and Cargo, \
+         If Raven is already enabled after an update or switching between Homebrew and Cargo, \
          its code signature changed: click \"Reset Permission & Retry\" (or remove the old entry \
          with the – button and add the binary again with the + button)."
     )
@@ -62,7 +62,7 @@ pub(crate) fn show_accessibility_setup(
         accessibility_informative_text(objc2::available!(macos = 27.0), binary_path.as_deref());
 
     let alert = NSAlert::new(main_thread_marker);
-    alert.setMessageText(&NSString::from_str("Allow Paneru to Control Windows"));
+    alert.setMessageText(&NSString::from_str("Allow Raven to Control Windows"));
     alert.setInformativeText(&NSString::from_str(&informative_text));
     alert.addButtonWithTitle(&NSString::from_str("Continue"));
     alert.addButtonWithTitle(&NSString::from_str("Reset Permission & Retry"));
@@ -108,19 +108,18 @@ mod tests {
 
     #[test]
     fn informative_text_uses_macos_27_terminology_and_binary_path() {
-        let text =
-            accessibility_informative_text(true, Some(Path::new("/opt/homebrew/bin/paneru")));
+        let text = accessibility_informative_text(true, Some(Path::new("/opt/homebrew/bin/raven")));
         assert!(text.contains("Privacy & Security → Device Control and Data Access"));
-        assert!(text.contains("paneru (/opt/homebrew/bin/paneru)"));
+        assert!(text.contains("raven (/opt/homebrew/bin/raven)"));
         assert!(text.contains("Reset Permission & Retry"));
-        assert!(!text.contains("Paneru.app"));
+        assert!(!text.contains("Raven.app"));
     }
 
     #[test]
     fn informative_text_uses_accessibility_before_macos_27() {
         let text = accessibility_informative_text(false, None);
         assert!(text.contains("Privacy & Security → Accessibility"));
-        assert!(text.contains("turn on paneru."));
-        assert!(!text.contains("Paneru.app"));
+        assert!(text.contains("turn on raven."));
+        assert!(!text.contains("Raven.app"));
     }
 }

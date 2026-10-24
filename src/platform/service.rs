@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use crate::util::exe_path;
 
 /// The bundle identifier for the `paneru` service.
-pub const ID: &str = "com.github.karinushka.paneru";
+pub const ID: &str = "com.github.csjaugustus.raven";
 
 /// `Service` manages the installation, uninstallation, starting, and stopping of the `paneru` application as a launchd service.
 /// It encapsulates the `launchctl::Service` and the path to the executable.
@@ -31,7 +31,7 @@ impl Service {
     ///
     /// # Arguments
     ///
-    /// * `name` - The name of the service (e.g., "com.github.karinushka.paneru").
+    /// * `name` - The name of the service (e.g., "com.github.csjaugustus.raven").
     ///
     /// # Returns
     ///
@@ -94,7 +94,7 @@ impl Service {
         let mut plist = fs::File::create(plist_path)?;
         plist.write_all(self.launchd_plist().as_bytes())?;
         info!("installed launch agent to `{}`", plist_path.display());
-        info!("check logfile /tmp/com.github.karinushka.paneru*.log for potential error messages");
+        info!("check logfile /tmp/com.github.csjaugustus.raven*.log for potential error messages");
         Ok(())
     }
 
@@ -343,9 +343,9 @@ mod tests {
 
     fn service() -> launchctl::Service {
         launchctl::Service::builder()
-            .name("com.github.karinushka.paneru")
+            .name("com.github.csjaugustus.raven")
             .uid("501")
-            .plist_path("/Users/test/Library/LaunchAgents/com.github.karinushka.paneru.plist")
+            .plist_path("/Users/test/Library/LaunchAgents/com.github.csjaugustus.raven.plist")
             .build()
     }
 
@@ -353,7 +353,7 @@ mod tests {
     fn start_kickstarts_a_bootstrapped_service_by_service_target() {
         assert_eq!(
             start_commands(&service(), true),
-            vec![vec!["kickstart", "gui/501/com.github.karinushka.paneru"]]
+            vec![vec!["kickstart", "gui/501/com.github.csjaugustus.raven"]]
         );
     }
 
@@ -362,11 +362,11 @@ mod tests {
         assert_eq!(
             start_commands(&service(), false),
             vec![
-                vec!["enable", "gui/501/com.github.karinushka.paneru"],
+                vec!["enable", "gui/501/com.github.csjaugustus.raven"],
                 vec![
                     "bootstrap",
                     "gui/501",
-                    "/Users/test/Library/LaunchAgents/com.github.karinushka.paneru.plist"
+                    "/Users/test/Library/LaunchAgents/com.github.csjaugustus.raven.plist"
                 ]
             ]
         );

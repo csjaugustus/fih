@@ -83,8 +83,7 @@ impl MenuBarVisibility {
 pub struct MenuBarPreferenceFile(PathBuf);
 
 pub fn load_menu_bar_preference(app: &mut bevy::app::App) {
-    if let Some(path) = xdg::BaseDirectories::with_prefix("paneru").get_state_file("menu-bar.json")
-    {
+    if let Some(path) = xdg::BaseDirectories::with_prefix("raven").get_state_file("menu-bar.json") {
         app.insert_resource(MenuBarVisibility::load(&path))
             .insert_resource(MenuBarPreferenceFile(path));
     }
@@ -321,10 +320,10 @@ impl MenuBarManager {
         let pane = permission_pane_name();
         self.menu.removeAllItems();
 
-        let status = self.add_item(&format!("Paneru — {pane} Required"), None);
+        let status = self.add_item(&format!("Raven — {pane} Required"), None);
         status.setEnabled(false);
 
-        let hint = self.add_item("Grant access; Paneru will start automatically", None);
+        let hint = self.add_item("Grant access; Raven will start automatically", None);
         hint.setEnabled(false);
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
@@ -342,7 +341,7 @@ impl MenuBarManager {
         );
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
-        self.add_item("Quit Paneru", Some(sel!(quitPaneru:)));
+        self.add_item("Quit Raven", Some(sel!(quitPaneru:)));
     }
 
     pub fn update(
@@ -400,7 +399,7 @@ impl MenuBarManager {
         self.manage_item = None;
         self.copy_rule_item = None;
 
-        let status = self.add_item("Paneru — Running", None);
+        let status = self.add_item("Raven — Running", None);
         status.setEnabled(false);
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
 
@@ -424,10 +423,8 @@ impl MenuBarManager {
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
         let hide = self.add_item("Hide Menu Bar", Some(sel!(hideMenuBar:)));
-        hide.setToolTip(Some(&NSString::from_str(
-            "Show again with: paneru showmenu",
-        )));
-        self.add_item("Quit Paneru", Some(sel!(quitPaneru:)));
+        hide.setToolTip(Some(&NSString::from_str("Show again with: raven showmenu")));
+        self.add_item("Quit Raven", Some(sel!(quitPaneru:)));
         self.configured_widths = widths.to_vec();
         self.current_enablement = None;
         self.selected_widths = None;
@@ -623,7 +620,7 @@ impl MenuBarManager {
         // A button starts out at `NSNoImage`, which draws its (empty) title and
         // nothing else: the item goes blank without this.
         button.setImagePosition(NSCellImagePosition::ImageOnly);
-        button.setToolTip(Some(&NSString::from_str("Paneru window manager")));
+        button.setToolTip(Some(&NSString::from_str("Raven window manager")));
         self.status_item.setLength(NSVariableStatusItemLength);
         true
     }

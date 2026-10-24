@@ -17,7 +17,7 @@ path = "src/lib.rs"
 crate-type = ["rlib", "cdylib"]
 
 [[bin]]
-name = "paneru"
+name = "raven"
 path = "src/main.rs"
 
 [lints.clippy]

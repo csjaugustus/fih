@@ -1,13 +1,17 @@
 <div align="center">
-  <img src="./images/paneru.png" alt="Paneru" width="600"/>
+  <img src="./images/paneru.png" alt="Raven" width="600"/>
 </div>
 
 ##
 A sliding, tiling window manager for MacOS.
 
+> Raven is a fork of [Paneru](https://github.com/karinushka/paneru). It uses its
+> own binary name, config paths and service IDs, so it can be installed
+> alongside Paneru or Paneru-based apps.
+
 ## About
 
-Paneru is a MacOS window manager that arranges windows on an infinite strip,
+Raven is a MacOS window manager that arranges windows on an infinite strip,
 extending to the right. A core principle is that opening a new window will
 **never** cause existing windows to resize, maintaining your layout stability.
 
@@ -22,10 +26,10 @@ https://github.com/user-attachments/assets/cbc2e820-635f-408b-923a-6cb47c44704c
 https://github.com/user-attachments/assets/793e7eaa-7909-4086-8380-1fb7861f8780
 
 
-## Why Paneru?
+## Why Raven?
 
 - **Niri-like Behavior on MacOS:** Inspired by the user experience of [Niri],
-  Paneru aims to bring a similar scrollable tiling workflow to MacOS.
+  Raven aims to bring a similar scrollable tiling workflow to MacOS.
 - **Works with MacOS workspaces:** You can use existing workspaces and switch
   between them with keyboard or touchpad gestures - with a separate window strip
   on each. Drag and dropping windows between them works as well.
@@ -39,21 +43,21 @@ https://github.com/user-attachments/assets/793e7eaa-7909-4086-8380-1fb7861f8780
   `[windows]` configuration rule for the focused window on the clipboard, so
   you never have to guess an app's bundle id.
 - **Startup session restore:** Restores managed window layouts, virtual
-  workspaces, and display assignments from the last saved state when Paneru
+  workspaces, and display assignments from the last saved state when Raven
   starts.
 - **Focus follows mouse on MacOS:** Very useful for people who would like to
   avoid an extra click.
 - **Sliding windows with touchpad:** Using a touchpad is quite natural for
   navigation of the window pane.
 - **Native macOS tabs support:** Applications like Ghostty use these, so
-  Paneru manages them on the layout strip like other windows.
+  Raven manages them on the layout strip like other windows.
 - **Optimal for Large Displays:** Standard tiling window managers can be
   suboptimal for large displays, often resulting in either huge maximized
-  windows or numerous tiny, unusable windows. Paneru addresses this by
+  windows or numerous tiny, unusable windows. Raven addresses this by
   providing a more flexible and practical arrangement.
 - **Improved Small Display Usability:** On smaller displays (like laptops),
   traditional tiling can make windows too small to be productive, forcing users
-  to constantly maximize. Paneru's sliding strip approach aims to provide a
+  to constantly maximize. Raven's sliding strip approach aims to provide a
   better experience without this compromise.
 
 ## Inspiration
@@ -70,20 +74,20 @@ inspired by [Niri] and [PaperWM.spoon].
 
 ### Recommended System Options
 
-- Like all non-native window managers for MacOS, Paneru requires accessibility
+- Like all non-native window managers for MacOS, Raven requires accessibility
   access to move windows. Once it runs you may get a dialog window asking for
   permissions. Otherwise check the setting in System Settings under "Privacy &
   Security -> Accessibility" (or "Privacy & Security -> Device Control and Data
   Access" on macOS 27 and later).
 
 - Check your System Settings for "Displays have separate spaces" option. It
-  should be enabled - this allows Paneru to manage the workspaces independently.
+  should be enabled - this allows Raven to manage the workspaces independently.
 
-- **Multiple displays**. Paneru is moving the windows off-screen, hiding them
+- **Multiple displays**. Raven is moving the windows off-screen, hiding them
   to the left or right. If you have multiple displays, for example your laptop
   open when docked to an external monitor you may experience weird behavior.
   The issue is that when MacOS notices a window being moved too far off-screen
-  it will relocate it to a different display - which confuses Paneru! The
+  it will relocate it to a different display - which confuses Raven! The
   solution is to change the spatial arrangement of your additional display -
   instead of having it to the left or right, move it above or below your main
   display.
@@ -93,30 +97,25 @@ inspired by [Niri] and [PaperWM.spoon].
   arrangement of displays "feel" horizontal.
 
 - **Off-screen window slivers**. Because macOS will forcibly relocate windows
-  that are moved fully off-screen, Paneru keeps a thin sliver of each
+  that are moved fully off-screen, Raven keeps a thin sliver of each
   off-screen window visible at the screen edge. The `sliver_width` and
   `sliver_height` options control the size of this sliver. This is a
   workaround for a macOS limitation, not a design choice.
 
-### Installing from Crates.io
+### Building from source
 
-Paneru is built using Rust's `cargo`. It can be installed directly from
-`crates.io` or if you need the latest version, by fetching the source from Github.
-
-```shell
-$ cargo install paneru
-```
-
-### Installing from Github
+Raven is built with Rust's `cargo`:
 
 ```shell
-$ git clone https://github.com/karinushka/paneru.git
+$ git clone https://github.com/csjaugustus/paneru.git
 $ cd paneru
 $ cargo build --release
 $ cargo install --path .
 ```
 
-By default, Paneru builds with the embedded Lua runtime using a vendored LuaJIT compiled from source, requiring no system-wide Lua installation or `pkg-config` setup.
+For development, `cargo run` builds and launches the daemon in the foreground.
+
+By default, Raven builds with the embedded Lua runtime using a vendored LuaJIT compiled from source, requiring no system-wide Lua installation or `pkg-config` setup.
 
 If you prefer to link against a system- or version-manager-installed Lua (e.g. via `mise`, `asdf`, or Homebrew), disable default features and pass `--features lua`, making sure `PKG_CONFIG_PATH` contains the directory with `luajit.pc`:
 
@@ -131,47 +130,28 @@ $ cargo build --release --no-default-features --features lua
 It can run directly from the command line or as a service.
 Note that you will need to grant accessibility privileges to the binary.
 
-### Installing with Homebrew
-
-If you are using Homebrew, you can install from the formula with:
-
-```shell
-$ brew install paneru
-```
-
-Or by first adding the tap and then installing by name:
-
-```shell
-$ brew tap karinushka/paneru
-$ brew install paneru
-```
-
-### Installing with Nix
-
-See [`nix/README.md`](/nix/README.md).
-
 ### Configuration
 
-Paneru checks for configuration in following locations:
+Raven checks for configuration in following locations:
 
-- `$HOME/.paneru`
-- `$HOME/.paneru.toml`
-- `$XDG_CONFIG_HOME/paneru/paneru.toml`
+- `$HOME/.raven`
+- `$HOME/.raven.toml`
+- `$XDG_CONFIG_HOME/raven/raven.toml`
 
-Additionally it allows overriding the location with `$PANERU_CONFIG` environment variable.
-If none of these files exists, Paneru creates
-`$XDG_CONFIG_HOME/paneru/paneru.toml` with the built-in defaults on first launch.
+Additionally it allows overriding the location with `$RAVEN_CONFIG` environment variable.
+If none of these files exists, Raven creates
+`$XDG_CONFIG_HOME/raven/raven.toml` with the built-in defaults on first launch.
 
-A Lua script (`$XDG_CONFIG_HOME/paneru/init.lua`, `$HOME/.paneru.lua`, or
-`$PANERU_LUA`) replaces the TOML rather than layering on top of it: when one
-exists, no `paneru.toml` is read, created, or watched.
+A Lua script (`$XDG_CONFIG_HOME/raven/init.lua`, `$HOME/.raven.lua`, or
+`$RAVEN_LUA`) replaces the TOML rather than layering on top of it: when one
+exists, no `raven.toml` is read, created, or watched.
 
 You can use the following basic configuration as a starting point. For a
 complete guide to all available options, keybindings, and window rules, see the
 **[Configuration Guide](./CONFIGURATION.md)**.
 
 ```toml
-# basic .paneru.toml
+# basic .raven.toml
 [options]
 focus_follows_mouse = true
 mouse_follows_focus = true
@@ -189,7 +169,7 @@ via `paneru.setup{...}`, making the TOML file optional — see the
 **[Lua Scripting Guide](./SCRIPTING.md)**.
 
 The `paneru` table is available globally in `init.lua`; `require("paneru")`
-also returns it. No separate `paneru.so` is needed for Paneru's own config.
+also returns it. No separate `paneru.so` is needed for Raven's own config.
 
 ```lua
 -- init.lua
@@ -206,15 +186,15 @@ paneru.setup {
 ### Live reloading
 
 Changes made to the active configuration file are automatically reloaded while
-Paneru is running. This is useful for tweaking keyboard bindings and other
+Raven is running. This is useful for tweaking keyboard bindings and other
 settings without restarting the application.
 
 ### Startup session restore
 
-Paneru saves managed window layout state to the user state directory
-(`$XDG_STATE_HOME/paneru/state.json`, usually
-`~/.local/state/paneru/state.json`) and loads it when Paneru starts. During the
-startup restore window, Paneru matches reopened windows to the saved session and
+Raven saves managed window layout state to the user state directory
+(`$XDG_STATE_HOME/raven/state.json`, usually
+`~/.local/state/raven/state.json`) and loads it when Raven starts. During the
+startup restore window, Raven matches reopened windows to the saved session and
 restores their layout placement, virtual workspace row, and display assignment
 where possible.
 
@@ -229,41 +209,41 @@ configuration guide.
 ### Running as a service
 
 ```shell
-$ paneru install
-$ paneru start
+$ raven install
+$ raven start
 ```
 
 ### Installing an app launcher
 
-To start Paneru from Spotlight, Alfred, Raycast, or another application launcher,
+To start Raven from Spotlight, Alfred, Raycast, or another application launcher,
 install the lightweight app wrapper:
 
 ```shell
-$ paneru install-app
+$ raven install-app
 ```
 
-This creates `$HOME/Applications/Paneru.app`. Opening the app starts the
-installed Paneru launch agent and exits immediately. Remove the wrapper with:
+This creates `$HOME/Applications/Raven.app`. Opening the app starts the
+installed Raven launch agent and exits immediately. Remove the wrapper with:
 
 ```shell
-$ paneru uninstall-app
+$ raven uninstall-app
 ```
 
 ### Running in the foreground
 
 ```shell
-$ paneru
+$ raven
 ```
 
 ### Sending Commands
 
-Paneru exposes a `send-cmd` subcommand that lets you control the running
+Raven exposes a `send-cmd` subcommand that lets you control the running
 instance from the command line over a Mach service
-(`com.github.karinushka.paneru`). Any
+(`com.github.csjaugustus.raven`). Any
 command that can be bound to a hotkey can also be sent programmatically:
 
 ```shell
-$ paneru send-cmd <command> [args...]
+$ raven send-cmd <command> [args...]
 ```
 
 #### Available commands
@@ -296,8 +276,8 @@ $ paneru send-cmd <command> [args...]
 | `window snap`              | Snap the focused window into the visible viewport |
 | `mouse nextdisplay`        | Warp the mouse pointer to the next display       |
 | `printstate`               | Print the internal ECS state to the debug log    |
-| `quit`                     | Quit Paneru                                      |
-| `restart`                  | Restart the Paneru service                         |
+| `quit`                     | Quit Raven                                      |
+| `restart`                  | Restart the Raven service                         |
 
 Where `<direction>` is one of: `west`, `east`, `north`, `south`, `first`, `last`.
 Window numbers are 1-based and count columns from left to right.
@@ -306,45 +286,45 @@ Window numbers are 1-based and count columns from left to right.
 
 ```shell
 # Move focus one window to the right.
-$ paneru send-cmd window focus east
+$ raven send-cmd window focus east
 
 # Swap the current window to the left.
-$ paneru send-cmd window swap west
+$ raven send-cmd window swap west
 
 # Center and resize in one shot (two separate calls).
-$ paneru send-cmd window center && paneru send-cmd window resize
+$ raven send-cmd window center && raven send-cmd window resize
 
 # Balance all columns to the focused window's width.
-$ paneru send-cmd window balance
+$ raven send-cmd window balance
 
 # Cycle backward through preset widths.
-$ paneru send-cmd window shrink
+$ raven send-cmd window shrink
 
 # Grow the focused window's height inside its stack.
-$ paneru send-cmd window vertical grow
+$ raven send-cmd window vertical grow
 
 # Jump to the left-most window.
-$ paneru send-cmd window focus first
+$ raven send-cmd window focus first
 
 # Jump to the second window from the left.
-$ paneru send-cmd window focus 2
+$ raven send-cmd window focus 2
 
 # Switch directly to virtual workspace 3.
-$ paneru send-cmd window virtualnum 3
+$ raven send-cmd window virtualnum 3
 
 # Send the focused window to virtual workspace 3 without following it.
-$ paneru send-cmd window virtualsendnum 3
+$ raven send-cmd window virtualsendnum 3
 ```
 
 ### Querying and Subscribing to State
 
-Paneru also exposes structured JSON state for scripts and status bars:
+Raven also exposes structured JSON state for scripts and status bars:
 
 ```shell
-$ paneru query state --json
-$ paneru query virtual-workspaces --json
-$ paneru query active --json
-$ paneru subscribe --json
+$ raven query state --json
+$ raven query virtual-workspaces --json
+$ raven query active --json
+$ raven subscribe --json
 ```
 
 `query` prints a JSON snapshot and exits. `subscribe --json` keeps the channel
@@ -360,25 +340,25 @@ Each window entry includes its accessibility `role` and `subrole` (e.g.
 
 #### Scripting ideas
 
-Because `send-cmd` talks to the running daemon, you can drive Paneru from shell
+Because `send-cmd` talks to the running daemon, you can drive Raven from shell
 scripts, `cron` jobs, or other automation tools:
 
 - **Launch-and-arrange workflow.** Open an application and immediately position
-  it: `open -a Safari && sleep 0.5 && paneru send-cmd window resize`.
-- **One-key layout reset.** Use `paneru send-cmd window balance` to make every
+  it: `open -a Safari && sleep 0.5 && raven send-cmd window resize`.
+- **One-key layout reset.** Use `raven send-cmd window balance` to make every
   column the same width as the focused window — great for resetting layouts
   after unplugging a monitor or when windows get shuffled.
 - **Integration with other tools.** Pipe focus events from tools like
   [Hammerspoon](https://www.hammerspoon.org) or
-  [skhd](https://github.com/koekeishiya/skhd) into `paneru send-cmd` for
+  [skhd](https://github.com/koekeishiya/skhd) into `raven send-cmd` for
   compound actions that go beyond a single hotkey.
 - **Multi-display orchestration.** Move a window to the next display and
   immediately warp the mouse there:
   ```shell
-  paneru send-cmd window nextdisplay && paneru send-cmd mouse nextdisplay
+  raven send-cmd window nextdisplay && raven send-cmd mouse nextdisplay
   ```
-- **Status bar integration.** Use `paneru query state --json` to render the
-  initial workspace labels, then keep them current with `paneru subscribe --json`.
+- **Status bar integration.** Use `raven query state --json` to render the
+  initial workspace labels, then keep them current with `raven subscribe --json`.
 
 
 ## Future Enhancements
@@ -396,10 +376,10 @@ ask any questions.
 
 ## Architecture Overview
 
-For a detailed high-level overview of Paneru's internal design, data flow, and
+For a detailed high-level overview of Raven's internal design, data flow, and
 ECS patterns, please refer to the **[Architecture Guide](./ARCHITECTURE.md)**.
 
-Paneru's architecture is built around the **Bevy ECS (Entity Component
+Raven's architecture is built around the **Bevy ECS (Entity Component
 System)**, which manages the window manager's state as a collection of entities
 (displays, workspaces, applications, and windows) and components.
 

@@ -33,7 +33,7 @@ fn service_name() -> String {
 
 fn connect() -> LuaResult<Sender<Request>> {
     wire::connect(&service_name()).map_err(|err| match err {
-        WireError::NotRunning => LuaError::RuntimeError("paneru is not running".to_string()),
+        WireError::NotRunning => LuaError::RuntimeError("raven is not running".to_string()),
         other => LuaError::external(other),
     })
 }

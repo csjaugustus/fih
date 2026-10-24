@@ -66,6 +66,7 @@ pub const VERSION_STRING: &str = concat!(env!("CARGO_PKG_VERSION"));
 /// It defines the available subcommands for controlling the Paneru daemon.
 #[derive(Clone, Debug, Default, Parser)]
 #[command(
+    name = "raven",
     version = VERSION_STRING,
     author = clap::crate_authors!(),
     about = clap::crate_description!(),
@@ -76,45 +77,45 @@ pub struct Paneru {
     subcmd: Option<SubCmd>,
 }
 
-/// `SubCmd` enumerates the available command-line subcommands for `paneru`.
+/// `SubCmd` enumerates the available command-line subcommands for `raven`.
 /// These subcommands allow users to launch the daemon, install/uninstall it as a service,
 /// install/uninstall its app launcher, start/stop/restart the service, or send commands to
 /// a running daemon.
 #[derive(Clone, Debug, Default, Subcommand)]
 pub enum SubCmd {
-    /// Launches the `paneru` daemon directly in the console (default behavior).
+    /// Launches the `raven` daemon directly in the console (default behavior).
     #[default]
     Launch,
 
-    /// Installs the `paneru` daemon as a background service.
+    /// Installs the `raven` daemon as a background service.
     Install,
 
-    /// Uninstalls the `paneru` background service.
+    /// Uninstalls the `raven` background service.
     Uninstall,
 
-    /// Reinstalls the `paneru` background service.
+    /// Reinstalls the `raven` background service.
     Reinstall,
 
-    /// Installs a Paneru app launcher to `~/Applications`.
+    /// Installs a Raven app launcher to `~/Applications`.
     InstallApp,
 
-    /// Uninstalls the Paneru app launcher from `~/Applications`.
+    /// Uninstalls the Raven app launcher from `~/Applications`.
     UninstallApp,
 
-    /// Starts the `paneru` background service.
+    /// Starts the `raven` background service.
     Start,
 
-    /// Stops the `paneru` background service.
+    /// Stops the `raven` background service.
     Stop,
 
-    /// Restarts the `paneru` background service.
+    /// Restarts the `raven` background service.
     Restart,
 
-    /// Shows the Paneru menu bar item and remembers the choice.
+    /// Shows the Raven menu bar item and remembers the choice.
     #[command(name = "showmenu")]
     ShowMenu,
 
-    /// Sends a command via a Unix socket to the running `paneru` daemon.
+    /// Sends a command via a Unix socket to the running `raven` daemon.
     SendCmd {
         #[arg(trailing_var_arg = true)]
         cmd: Vec<String>,
@@ -227,7 +228,7 @@ fn main() -> Result<()> {
                 }
                 Err(err) => {
                     error!(
-                        "Error launching Paneru: {err}.\nStopping the service for now. You can restart it again with 'paneru restart'."
+                        "Error launching Raven: {err}.\nStopping the service for now. You can restart it again with 'raven restart'."
                     );
                     service()?.stop()?;
                 }
@@ -260,7 +261,7 @@ fn wait_for_accessibility(sender: EventSender, receiver: &Receiver<Event>) -> bo
 
     let pane = permission_pane_name();
     warn!(
-        "{pane} permission is required. Paneru will remain in the menu bar and start automatically once access is granted."
+        "{pane} permission is required. Raven will remain in the menu bar and start automatically once access is granted."
     );
 
     loop {
