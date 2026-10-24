@@ -1069,7 +1069,7 @@ impl Config {
             .and_then(|decorations| decorations.menu.as_ref())
             .and_then(|menubar| menubar.indicator.as_ref())
             .and_then(|indicator| indicator.style)
-            .unwrap_or(IndicatorStyle::Mono)
+            .unwrap_or(IndicatorStyle::Occupied)
     }
     pub fn menubar_indicator_format(&self) -> IndicatorFormat {
         self.inner()

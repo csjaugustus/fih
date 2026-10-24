@@ -1,22 +1,25 @@
 use bevy::ecs::change_detection::{DetectChanges, DetectChangesMut};
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::message::MessageReader;
-use bevy::ecs::query::{Added, Changed, With};
+use bevy::ecs::query::{Added, Changed};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{NonSendMut, Query, Res, ResMut};
 use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
 use objc2::{
     AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel,
 };
 use objc2_app_kit::{
     NSBezierPath, NSBitmapImageRep, NSCellImagePosition, NSColor, NSCompositingOperation,
-    NSDeviceRGBColorSpace, NSFont, NSGradient, NSGraphicsContext, NSImage, NSImageScaling,
-    NSImageView, NSLayoutAttribute, NSMenu, NSMenuItem, NSScreen, NSStackView, NSStatusBar,
-    NSStatusItem, NSTextField, NSUserInterfaceLayoutOrientation, NSVariableStatusItemLength,
-    NSView,
+    NSControlStateValueOff, NSControlStateValueOn, NSDeviceRGBColorSpace, NSFont,
+    NSFontWeightSemibold, NSGradient, NSGraphicsContext, NSImage, NSImageScaling, NSImageView,
+    NSLayoutAttribute, NSMenu, NSMenuItem, NSScreen, NSStackView, NSStatusBar, NSStatusItem,
+    NSTextField, NSUserInterfaceLayoutOrientation, NSVariableStatusItemLength, NSView,
 };
 use objc2_core_foundation::{CGFloat, CGPoint, CGRect, CGSize};
-use objc2_foundation::{NSArray, NSData, NSInteger, NSObject, NSString};
+use objc2_foundation::{
+    NSArray, NSAttributedString, NSData, NSDictionary, NSInteger, NSObject, NSString,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -25,15 +28,16 @@ use crate::accessibility_prompt::{
     AccessibilitySetupAction, handle_accessibility_setup_action, permission_pane_name,
     show_accessibility_setup,
 };
-use crate::commands::Command;
+use crate::commands::{Command, Operation};
 use crate::config::Config;
 use crate::config::decorations::{
     DescriptorStyle, IndicatorFormat, IndicatorStyle, MenubarOrientation,
 };
 use crate::ecs::ActiveWorkspaceMarker;
 use crate::ecs::layout::LayoutStrip;
-use crate::ecs::params::ActiveDisplay;
+use crate::ecs::params::{ActiveDisplay, Windows};
 use crate::events::{Event, EventSender};
+use crate::manager::Application;
 use crate::util::round_px;
 
 /// A menu or command choice overrides the configuration until changed again.
@@ -150,6 +154,14 @@ define_class!(
     struct MenuActionTarget;
 
     impl MenuActionTarget {
+        #[unsafe(method(switchWorkspace:))]
+        fn switch_workspace(&self, item: &NSMenuItem) {
+            let Ok(virtual_index) = u32::try_from(item.tag()) else {
+                return;
+            };
+            self.send_command(Command::Window(Operation::VirtualNumber(virtual_index)));
+        }
+
         #[unsafe(method(openConfig:))]
         fn open_config(&self, _: &NSMenuItem) {
             let Some(path) = config_file() else {
@@ -225,6 +237,105 @@ impl MenuActionTarget {
 }
 
 const MENU_BAR_SPACING: CGFloat = 5.0;
+const BADGE_SPACING: CGFloat = 4.0;
+const BADGE_RADIUS: CGFloat = 4.0;
+const BADGE_PADDING: CGFloat = 4.0;
+const BADGE_LINE_WIDTH: CGFloat = 1.2;
+
+struct WorkspaceBadgeIvars {
+    label: Retained<NSAttributedString>,
+    active: bool,
+    size: CGSize,
+}
+
+define_class!(
+    /// A workspace number in a rounded square: filled with the number cut out
+    /// for the active workspace, outlined for the rest. Only its alpha counts,
+    /// since the menu bar image it is rendered into is a template.
+    #[unsafe(super(NSView))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "FihWorkspaceBadge"]
+    #[ivars = WorkspaceBadgeIvars]
+    struct WorkspaceBadge;
+
+    impl WorkspaceBadge {
+        #[unsafe(method(intrinsicContentSize))]
+        fn intrinsic_content_size(&self) -> CGSize {
+            self.ivars().size
+        }
+
+        #[unsafe(method(drawRect:))]
+        fn draw_rect(&self, _dirty_rect: CGRect) {
+            let ivars = self.ivars();
+            let inset = BADGE_LINE_WIDTH / 2.0;
+            let bounds = self.bounds();
+            let square = CGRect::new(
+                CGPoint::new(bounds.origin.x + inset, bounds.origin.y + inset),
+                CGSize::new(bounds.size.width - 2.0 * inset, bounds.size.height - 2.0 * inset),
+            );
+            let path =
+                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(square, BADGE_RADIUS, BADGE_RADIUS);
+            NSColor::blackColor().set();
+            let context = NSGraphicsContext::currentContext();
+            if ivars.active {
+                path.fill();
+                // Cut the number out of the fill.
+                if let Some(context) = &context {
+                    context.setCompositingOperation(NSCompositingOperation::DestinationOut);
+                }
+            } else {
+                path.setLineWidth(BADGE_LINE_WIDTH);
+                path.stroke();
+            }
+
+            let text_size: CGSize = unsafe { msg_send![&ivars.label, size] };
+            let origin = CGPoint::new(
+                bounds.origin.x + (bounds.size.width - text_size.width) / 2.0,
+                bounds.origin.y + (bounds.size.height - text_size.height) / 2.0,
+            );
+            let _: () = unsafe { msg_send![&ivars.label, drawAtPoint: origin] };
+            if let Some(context) = &context {
+                context.setCompositingOperation(NSCompositingOperation::SourceOver);
+            }
+        }
+    }
+);
+
+impl WorkspaceBadge {
+    fn new(mtm: MainThreadMarker, label: &str, active: bool, font_size: f64) -> Retained<Self> {
+        // A little under the menu bar's text size, so the square around it
+        // still fits the bar.
+        let font = NSFont::monospacedDigitSystemFontOfSize_weight(font_size - 2.0, unsafe {
+            NSFontWeightSemibold
+        });
+        let keys = [
+            &*NSString::from_str("NSFont"),
+            &*NSString::from_str("NSColor"),
+        ];
+        let color = NSColor::blackColor();
+        let objects = [&*font as &AnyObject, &*color as &AnyObject];
+        let attributes = NSDictionary::from_slices(&keys, &objects);
+        let label: Retained<NSAttributedString> = unsafe {
+            msg_send![
+                NSAttributedString::alloc(),
+                initWithString: &*NSString::from_str(label),
+                attributes: &*attributes
+            ]
+        };
+        let text_size: CGSize = unsafe { msg_send![&label, size] };
+        let height = font_size + 3.0;
+        let size = CGSize::new((text_size.width + 2.0 * BADGE_PADDING).max(height), height);
+
+        let this = Self::alloc(mtm).set_ivars(WorkspaceBadgeIvars {
+            label,
+            active,
+            size,
+        });
+        let this: Retained<Self> =
+            unsafe { msg_send![super(this), initWithFrame: CGRect::new(CGPoint::ZERO, size)] };
+        this
+    }
+}
 /// The `symbol` that selects the built-in fih mark; any other value names an
 /// SF Symbol.
 pub(crate) const FIH_MARK_SYMBOL: &str = "fih";
@@ -238,9 +349,18 @@ pub struct MenuBarManager {
     status_item: Retained<NSStatusItem>,
     menu: Retained<NSMenu>,
     action_target: Retained<MenuActionTarget>,
-    menu_built: bool,
+    /// The workspaces the menu was last built for, with the active one.
+    menu_workspaces: Option<(u32, Vec<WorkspaceSummary>)>,
     current_content: Option<MenuBarContent>,
     visible: bool,
+}
+
+/// One virtual workspace of the current macOS Space, and the apps that have a
+/// window in it, in strip order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceSummary {
+    pub virtual_index: u32,
+    pub apps: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -276,7 +396,7 @@ impl MenuBarManager {
             status_item,
             menu,
             action_target,
-            menu_built: false,
+            menu_workspaces: None,
             current_content: None,
             visible,
         }
@@ -317,26 +437,58 @@ impl MenuBarManager {
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));
     }
 
-    pub fn update(&mut self, virtual_index: u32, virtual_indices: &[u32], config: &Config) {
-        if !self.menu_built {
-            self.rebuild_menu();
+    pub fn update(&mut self, virtual_index: u32, workspaces: &[WorkspaceSummary], config: &Config) {
+        if self
+            .menu_workspaces
+            .as_ref()
+            .is_none_or(|(index, shown)| *index != virtual_index || shown != workspaces)
+        {
+            self.rebuild_menu(virtual_index, workspaces);
         }
 
         let current = config.workspace_menu_status().then_some(virtual_index);
-        let all: &[u32] = if current.is_some() {
-            virtual_indices
-        } else {
-            &[]
+        let all = match current {
+            None => Vec::new(),
+            Some(current) if config.menubar_indicator_style() == IndicatorStyle::Occupied => {
+                occupied_indices(current, workspaces)
+            }
+            Some(_) => workspaces
+                .iter()
+                .map(|workspace| workspace.virtual_index)
+                .collect(),
         };
-        self.show_workspaces(config, current, all);
+        self.show_workspaces(config, current, &all);
     }
 
-    fn rebuild_menu(&mut self) {
+    fn rebuild_menu(&mut self, virtual_index: u32, workspaces: &[WorkspaceSummary]) {
         self.menu.removeAllItems();
 
         let status = self.add_item("fih — Running", None);
         status.setEnabled(false);
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
+
+        // What is open where; picking a workspace switches to it.
+        let open = workspaces
+            .iter()
+            .filter(|workspace| !workspace.apps.is_empty())
+            .collect::<Vec<_>>();
+        for workspace in &open {
+            let title = format!(
+                "{}  {}",
+                virtual_workspace_label(workspace.virtual_index),
+                apps_label(&workspace.apps)
+            );
+            let item = self.add_item(&title, Some(sel!(switchWorkspace:)));
+            item.setTag(isize::try_from(workspace.virtual_index).unwrap_or(isize::MAX));
+            item.setState(if workspace.virtual_index == virtual_index {
+                NSControlStateValueOn
+            } else {
+                NSControlStateValueOff
+            });
+        }
+        if !open.is_empty() {
+            self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
+        }
 
         let open_config = self.add_item("Open Config File…", Some(sel!(openConfig:)));
         if let Some(path) = config_file() {
@@ -345,7 +497,7 @@ impl MenuBarManager {
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));
-        self.menu_built = true;
+        self.menu_workspaces = Some((virtual_index, workspaces.to_vec()));
     }
 
     fn add_item(&self, title: &str, action: Option<objc2::runtime::Sel>) -> Retained<NSMenuItem> {
@@ -553,10 +705,11 @@ impl MenuBarManager {
         let style = config.menubar_indicator_style();
         // Both formats that distinguish the active workspace from the rest say
         // nothing on their own, so a single-item indicator - `mono`, `paged` -
-        // falls back to numbers.
+        // falls back to numbers, as does `occupied`, whose badges already mark
+        // the active workspace.
         let format = match (style, config.menubar_indicator_format()) {
             (
-                IndicatorStyle::Mono | IndicatorStyle::Paged,
+                IndicatorStyle::Mono | IndicatorStyle::Paged | IndicatorStyle::Occupied,
                 IndicatorFormat::Unicode | IndicatorFormat::Marked,
             ) => IndicatorFormat::Default,
             (_, format) => format,
@@ -579,6 +732,19 @@ impl MenuBarManager {
                         virtual_index == current,
                     );
                     stack.addArrangedSubview(&field);
+                }
+            }
+            IndicatorStyle::Occupied => {
+                stack.setSpacing(BADGE_SPACING);
+                for &virtual_index in all {
+                    let label = indicator_label(format, virtual_index, false, ' ', ' ');
+                    let badge = WorkspaceBadge::new(
+                        self.mtm,
+                        &label,
+                        virtual_index == current,
+                        config.menubar_indicator_font_size(),
+                    );
+                    stack.addArrangedSubview(&badge);
                 }
             }
             IndicatorStyle::Paged => {
@@ -699,7 +865,8 @@ impl Drop for MenuBarManager {
 
 /// Position-only animation and swipe frames do not affect menu content.
 pub(crate) fn menu_bar_dirty(
-    strip_changed: Query<(), (With<ActiveWorkspaceMarker>, Changed<LayoutStrip>)>,
+    // Any strip: a window moved to another workspace changes what it shows.
+    strip_changed: Query<(), Changed<LayoutStrip>>,
     workspace_changed: Query<(), Added<ActiveWorkspaceMarker>>,
     strips_added: Query<(), Added<LayoutStrip>>,
     mut strips_removed: RemovedComponents<LayoutStrip>,
@@ -715,6 +882,8 @@ pub(crate) fn menu_bar_dirty(
 pub fn update_menu_bar(
     active_display: ActiveDisplay,
     workspaces: Query<&LayoutStrip>,
+    windows: Windows,
+    apps: Query<&Application>,
     config: Res<Config>,
     visibility: Res<MenuBarVisibility>,
     menu_bar: Option<NonSendMut<MenuBarManager>>,
@@ -731,15 +900,64 @@ pub fn update_menu_bar(
         return;
     }
     let strip = active_display.active_strip();
-    let mut virtual_indices = workspaces
+    let app_name = |entity| {
+        let window = windows.get(entity)?;
+        let (_, _, parent) = windows.find_parent(window.id())?;
+        apps.get(parent).ok().map(|app| app.name().to_string())
+    };
+    let mut summaries = workspaces
         .iter()
         .filter(|workspace| workspace.id() == strip.id())
-        .map(|workspace| workspace.virtual_index)
+        .map(|workspace| WorkspaceSummary {
+            virtual_index: workspace.virtual_index,
+            apps: workspace
+                .all_windows()
+                .into_iter()
+                .filter_map(app_name)
+                .collect(),
+        })
         .collect::<Vec<_>>();
-    virtual_indices.sort_unstable();
-    virtual_indices.dedup();
+    summaries.sort_by_key(|summary| summary.virtual_index);
+    summaries.dedup_by_key(|summary| summary.virtual_index);
 
-    menu_bar.update(strip.virtual_index, &virtual_indices, &config);
+    menu_bar.update(strip.virtual_index, &summaries, &config);
+}
+
+/// The workspaces the `occupied` indicator shows: the active one, and every
+/// one with a window in it.
+fn occupied_indices(current: u32, workspaces: &[WorkspaceSummary]) -> Vec<u32> {
+    let mut indices = workspaces
+        .iter()
+        .filter(|workspace| !workspace.apps.is_empty())
+        .map(|workspace| workspace.virtual_index)
+        .chain([current])
+        .collect::<Vec<_>>();
+    indices.sort_unstable();
+    indices.dedup();
+    indices
+}
+
+/// The apps of a workspace as a menu reads them: in order, with repeats
+/// folded into a count ("Ghostty ×2 · Safari").
+fn apps_label(apps: &[String]) -> String {
+    let mut counted: Vec<(&str, usize)> = Vec::new();
+    for app in apps {
+        match counted.iter_mut().find(|(name, _)| name == app) {
+            Some((_, count)) => *count += 1,
+            None => counted.push((app, 1)),
+        }
+    }
+    counted
+        .into_iter()
+        .map(|(name, count)| {
+            if count > 1 {
+                format!("{name} ×{count}")
+            } else {
+                name.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 pub(crate) fn virtual_workspace_label(virtual_index: u32) -> String {
@@ -1047,6 +1265,34 @@ mod tests {
                 .resource::<MenuBarVisibility>()
                 .enabled(world.resource::<Config>())
         );
+    }
+
+    fn summary(virtual_index: u32, apps: &[&str]) -> super::WorkspaceSummary {
+        super::WorkspaceSummary {
+            virtual_index,
+            apps: apps.iter().map(|app| (*app).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn occupied_indicator_shows_the_active_and_non_empty_workspaces() {
+        let workspaces = [
+            summary(0, &["Ghostty"]),
+            summary(1, &[]),
+            summary(2, &["WeChat"]),
+        ];
+        assert_eq!(super::occupied_indices(0, &workspaces), [0, 2]);
+        // An empty active workspace still shows, so the bar always says where
+        // you are.
+        assert_eq!(super::occupied_indices(1, &workspaces), [0, 1, 2]);
+        assert_eq!(super::occupied_indices(4, &[]), [4]);
+    }
+
+    #[test]
+    fn app_list_folds_repeats_into_a_count() {
+        let apps = ["Ghostty", "Edge", "Ghostty", "Finder", "Finder"].map(String::from);
+        assert_eq!(super::apps_label(&apps), "Ghostty ×2 · Edge · Finder ×2");
+        assert_eq!(super::apps_label(&[]), "");
     }
 
     #[test]

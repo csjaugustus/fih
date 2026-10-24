@@ -146,6 +146,9 @@ pub enum IndicatorStyle {
     Multi,
     // The active workspace over how many there are: "2 / 4".
     Paged,
+    // The active workspace and every workspace with windows, each in a
+    // rounded square: filled for the active one, outlined for the rest.
+    Occupied,
 }
 #[derive(Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
