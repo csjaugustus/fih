@@ -16,6 +16,7 @@ mod query;
 
 use crate::config::Config;
 use crate::config::snippet::{RuleSubject, SnippetDialect, window_rule_snippet};
+use crate::ecs::autofill::{AutoFillWidth, fill_width};
 use crate::ecs::display::FloatingLayer;
 use crate::ecs::focus::{FocusHistory, PageHapticRequest};
 use crate::ecs::layout::{
@@ -1530,10 +1531,10 @@ fn balance_strip(
     commands.reshuffle_around(focused_entity);
 }
 
-/// Lays the active workspace out in columns, and resets its widths to one
-/// column. "Reset Widths" resets every window; switching to a different
-/// column count resets the ones a column wide and leaves full-width windows,
-/// which are full width on purpose.
+/// Lays the active workspace out in columns, and resets its widths to fill
+/// the screen down to a column (see [`fill_width`]). "Reset Widths" resets
+/// every window; switching to a different column count leaves full-width
+/// windows, which are full width on purpose.
 fn strip_columns_and_widths(
     mut messages: MessageReader<Event>,
     windows: Windows,
@@ -1569,8 +1570,12 @@ fn strip_columns_and_widths(
         .width();
     let viewport_width = active_display.actual_bounds(&config).width();
     let strip = active_display.active_strip();
-    let column_width =
-        round_px(f64::from(display_width) * strip.column_ratio()).min(viewport_width);
+    let width = fill_width(
+        strip.columns().count(),
+        strip.column_count(),
+        display_width,
+        viewport_width,
+    );
     // A pixel or two short of the viewport still reads as full width.
     let is_full_width = |entity| {
         windows.full_width(entity).is_some()
@@ -1594,8 +1599,13 @@ fn strip_columns_and_widths(
                 cmds.try_remove::<FullWidthMarker>();
             }
             if let Some(size) = windows.size(entity) {
-                commands.resize_entity(entity, size.with_x(column_width));
+                commands.resize_entity(entity, size.with_x(width));
                 anchor.get_or_insert(entity);
+            }
+            // Sized as auto-fill would, so it keeps filling as windows come
+            // and go.
+            if let Ok(mut cmds) = commands.get_entity(entity) {
+                cmds.try_insert(AutoFillWidth(width));
             }
         }
     }

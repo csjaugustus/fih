@@ -1358,3 +1358,76 @@ fn three_columns_make_resize_and_reset_use_thirds() {
     command(&mut harness, Operation::ResetWidths);
     assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH / 2);
 }
+
+fn close_runtime_window(harness: &mut TestHarness, id: i32) {
+    harness.mock_state.os_vanish_window(id);
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::WindowDestroyed {
+            window_id: id,
+            source: DestroySource::SpaceNotification,
+        });
+    harness.advance(Duration::from_millis(500));
+}
+
+#[test]
+fn closing_a_third_widens_the_rest_and_opening_one_narrows_them_back() {
+    let config: Config = (
+        MainOptions {
+            auto_fill_width: Some(true),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+    let mut harness = TestHarness::new().with_config(config).with_windows(0);
+    harness.advance(Duration::from_millis(100));
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::Command {
+            command: Command::Window(Operation::SetColumns(3)),
+        });
+    harness.advance(Duration::from_millis(100));
+    let widths = |harness: &mut TestHarness, ids: &[i32]| {
+        ids.iter()
+            .map(|id| auto_fill_window_width(harness.world(), *id))
+            .collect::<Vec<_>>()
+    };
+
+    for id in 0..3 {
+        spawn_runtime_window(&mut harness, id);
+        harness.advance(Duration::from_millis(500));
+    }
+    let third = TEST_DISPLAY_WIDTH / 3;
+    assert_eq!(widths(&mut harness, &[0, 1, 2]), [third, third, third]);
+
+    close_runtime_window(&mut harness, 2);
+    let half = TEST_DISPLAY_WIDTH / 2;
+    assert_eq!(
+        widths(&mut harness, &[0, 1]),
+        [half, half],
+        "two windows in three columns share the screen"
+    );
+
+    spawn_runtime_window(&mut harness, 3);
+    harness.advance(Duration::from_millis(500));
+    assert_eq!(
+        widths(&mut harness, &[0, 1, 3]),
+        [third, third, third],
+        "a third window brings back the thirds"
+    );
+
+    // Two columns: the last window left fills the screen.
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::Command {
+            command: Command::Window(Operation::SetColumns(2)),
+        });
+    harness.advance(Duration::from_millis(500));
+    close_runtime_window(&mut harness, 3);
+    close_runtime_window(&mut harness, 1);
+    assert_eq!(widths(&mut harness, &[0]), [TEST_DISPLAY_WIDTH]);
+}

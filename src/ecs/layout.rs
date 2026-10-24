@@ -623,11 +623,6 @@ impl LayoutStrip {
         self.column_count = Some(count.max(1));
     }
 
-    /// The width of one column, as a fraction of the screen width.
-    pub fn column_ratio(&self) -> f64 {
-        1.0 / f64::from(self.column_count())
-    }
-
     /// The window pinned to an edge, if any.
     pub fn pinned(&self) -> Option<Pin> {
         self.pinned

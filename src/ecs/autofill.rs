@@ -1,8 +1,9 @@
-//! Keeps a strip's windows to its columns (`auto_fill_width`): the first
-//! window on an empty workspace opens at full width, every later one opens a
-//! column wide (half the screen with 2 columns, a third with 3), the first
-//! one narrowing to a column beside the second, and a window left alone fills
-//! the screen again. A window the user has resized is never touched.
+//! Fills the screen with a strip's windows, a column at the least
+//! (`auto_fill_width`): with fewer windows than columns they share the screen
+//! (one window full, two halves), with as many or more each is a column wide
+//! (half the screen with 2 columns, a third with 3). Opening or closing a
+//! window resizes the rest to match. A window the user sized differently,
+//! say to full width on purpose, is left alone.
 
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
@@ -45,45 +46,32 @@ pub(crate) struct FillColumn {
 }
 
 impl FillColumn {
-    fn untouched_at(&self, width: i32) -> bool {
-        self.filled
-            .is_some_and(|filled| filled == width && (self.width - filled).abs() <= TOLERANCE)
-    }
-
     fn untouched(&self) -> bool {
         self.filled
             .is_some_and(|filled| (self.width - filled).abs() <= TOLERANCE)
     }
 }
 
-/// The widths auto-fill gives the columns of a strip, given the full width
-/// of its display and the width of one of the strip's columns.
-pub(crate) fn plan_auto_fill(columns: &[FillColumn], full: i32, column: i32) -> Vec<(Entity, i32)> {
-    if let [only] = columns {
-        return if only.single && (only.pending || only.untouched() && only.filled != Some(full)) {
-            vec![(only.entity, full)]
-        } else {
-            Vec::new()
-        };
-    }
-    // A window that just joined opens a column wide.
-    let mut joining = columns.iter().filter(|column| column.pending);
-    let (Some(joined), None) = (joining.next(), joining.next()) else {
-        return Vec::new();
-    };
-    if !joined.single {
-        return Vec::new();
-    }
-    let mut plan = vec![(joined.entity, column)];
-    // The first window, still filling the screen as auto-fill left it, makes
-    // room for the second.
-    if let [first, second] = columns {
-        let old = if first.pending { second } else { first };
-        if old.single && old.untouched_at(full) {
-            plan.push((old.entity, column));
-        }
-    }
-    plan
+/// The width each window gets with `windows` of them in a strip laid out in
+/// `columns` columns: an equal share of the screen, but never less than a
+/// column. `edge` is the display's usable width the shares are of, `full`
+/// the viewport a window may fill.
+pub(crate) fn fill_width(windows: usize, columns: u8, edge: i32, full: i32) -> i32 {
+    let share = windows.clamp(1, usize::from(columns.max(1)));
+    #[allow(clippy::cast_precision_loss)]
+    let width = round_px(f64::from(edge) / share as f64);
+    if share == 1 { full } else { width.min(full) }
+}
+
+/// The widths auto-fill gives the columns of a strip: [`fill_width`] for each
+/// window that just joined, or that is still the width auto-fill gave it.
+pub(crate) fn plan_auto_fill(columns: &[FillColumn], target: i32) -> Vec<(Entity, i32)> {
+    columns
+        .iter()
+        .filter(|column| column.single && (column.pending || column.untouched()))
+        .filter(|column| column.pending || (column.width - target).abs() > TOLERANCE)
+        .map(|column| (column.entity, target))
+        .collect()
 }
 
 /// Resizes the columns of every changed strip as [`plan_auto_fill`] says.
@@ -104,8 +92,12 @@ pub(crate) fn auto_fill_widths(
         // take them; a pinned window caps how wide a column can get.
         let edge_width = display.edge_bounds(dock, &config).width();
         let viewport_width = display.actual_display_bounds(dock, &config).width();
-        let full = viewport_width;
-        let column = round_px(f64::from(edge_width) * strip.column_ratio()).min(viewport_width);
+        let target = fill_width(
+            strip.columns().count(),
+            strip.column_count(),
+            edge_width,
+            viewport_width,
+        );
 
         let fill_columns = strip
             .columns()
@@ -122,7 +114,7 @@ pub(crate) fn auto_fill_widths(
             })
             .collect::<Vec<_>>();
 
-        for (entity, width) in plan_auto_fill(&fill_columns, full, column) {
+        for (entity, width) in plan_auto_fill(&fill_columns, target) {
             let Some(frame) = windows.frame(entity) else {
                 continue;
             };
@@ -158,10 +150,11 @@ pub(crate) fn auto_fill_widths(
 mod tests {
     use bevy::ecs::entity::Entity;
 
-    use super::{FillColumn, plan_auto_fill};
+    use super::{FillColumn, fill_width, plan_auto_fill};
 
-    const FULL: i32 = 1000;
-    const HALF: i32 = 500;
+    const FULL: i32 = 1200;
+    const HALF: i32 = 600;
+    const THIRD: i32 = 400;
 
     fn column(index: u32, pending: bool, filled: Option<i32>, width: i32) -> FillColumn {
         FillColumn {
@@ -174,64 +167,62 @@ mod tests {
     }
 
     #[test]
-    fn first_window_fills_the_screen() {
-        let only = column(1, true, None, 640);
-        assert_eq!(plan_auto_fill(&[only], FULL, HALF), [(only.entity, FULL)]);
+    fn windows_share_the_screen_down_to_a_column() {
+        // Two columns: full, then halves however many there are.
+        assert_eq!(fill_width(1, 2, FULL, FULL), FULL);
+        assert_eq!(fill_width(2, 2, FULL, FULL), HALF);
+        assert_eq!(fill_width(5, 2, FULL, FULL), HALF);
+        // Three columns: full, halves, then thirds.
+        assert_eq!(fill_width(1, 3, FULL, FULL), FULL);
+        assert_eq!(fill_width(2, 3, FULL, FULL), HALF);
+        assert_eq!(fill_width(3, 3, FULL, FULL), THIRD);
+        assert_eq!(fill_width(4, 3, FULL, FULL), THIRD);
     }
 
     #[test]
-    fn second_window_splits_with_an_untouched_first() {
+    fn first_window_fills_the_screen() {
+        let only = column(1, true, None, 640);
+        assert_eq!(plan_auto_fill(&[only], FULL), [(only.entity, FULL)]);
+    }
+
+    #[test]
+    fn a_new_window_narrows_the_untouched_ones() {
         let old = column(1, false, Some(FULL), FULL);
         let new = column(2, true, None, 640);
         assert_eq!(
-            plan_auto_fill(&[old, new], FULL, HALF),
-            [(new.entity, HALF), (old.entity, HALF)]
+            plan_auto_fill(&[old, new], HALF),
+            [(old.entity, HALF), (new.entity, HALF)]
         );
     }
 
     #[test]
-    fn a_resized_first_window_is_left_alone() {
-        let old = column(1, false, Some(FULL), 700);
-        let new = column(2, true, None, 640);
-        assert_eq!(
-            plan_auto_fill(&[old, new], FULL, HALF),
-            [(new.entity, HALF)]
-        );
-    }
-
-    #[test]
-    fn a_lone_untouched_window_fills_the_screen_again() {
-        let left = column(1, false, Some(HALF), HALF);
-        assert_eq!(plan_auto_fill(&[left], FULL, HALF), [(left.entity, FULL)]);
-        // Already full: nothing to do, so the strip settles.
-        let full = column(1, false, Some(FULL), FULL);
-        assert_eq!(plan_auto_fill(&[full], FULL, HALF), []);
-    }
-
-    #[test]
-    fn a_lone_resized_window_keeps_its_width() {
-        let resized = column(1, false, Some(HALF), 620);
-        assert_eq!(plan_auto_fill(&[resized], FULL, HALF), []);
-        let never_filled = column(1, false, None, 620);
-        assert_eq!(plan_auto_fill(&[never_filled], FULL, HALF), []);
-    }
-
-    #[test]
-    fn later_windows_open_a_column_wide() {
-        let columns = [
-            column(1, false, Some(HALF), HALF),
-            column(2, false, Some(HALF), HALF),
-            column(3, true, None, 640),
+    fn closing_one_of_three_thirds_widens_the_rest_to_halves() {
+        let left = [
+            column(1, false, Some(THIRD), THIRD),
+            column(2, false, Some(THIRD), THIRD),
         ];
         assert_eq!(
-            plan_auto_fill(&columns, FULL, HALF),
-            [(columns[2].entity, HALF)]
+            plan_auto_fill(&left, HALF),
+            [(left[0].entity, HALF), (left[1].entity, HALF)]
         );
-        // With three columns, a third of the screen.
-        let third = FULL / 3;
-        assert_eq!(
-            plan_auto_fill(&columns, FULL, third),
-            [(columns[2].entity, third)]
-        );
+    }
+
+    #[test]
+    fn a_window_sized_on_purpose_is_left_alone() {
+        // Made full width by hand: auto-fill last gave it a half.
+        let full = column(1, false, Some(HALF), FULL);
+        let new = column(2, true, None, 640);
+        assert_eq!(plan_auto_fill(&[full, new], HALF), [(new.entity, HALF)]);
+        let never_filled = column(1, false, None, 620);
+        assert_eq!(plan_auto_fill(&[never_filled], FULL), []);
+    }
+
+    #[test]
+    fn windows_already_at_their_width_stay() {
+        let settled = [
+            column(1, false, Some(HALF), HALF),
+            column(2, false, Some(HALF), HALF),
+        ];
+        assert_eq!(plan_auto_fill(&settled, HALF), []);
     }
 }
