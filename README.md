@@ -7,7 +7,7 @@
 
 # why many monitor when one do trick
 
-**fih put all window in one long strip. Slide strip. Window come, quick like fih. No second monitor. No third. Much focus.**
+**fih put all window in one long strip. Slide strip. Window come, quick like fih. No second monitor. No third. Max focus.**
 
 </div>
 
