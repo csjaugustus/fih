@@ -1124,28 +1124,30 @@ fn switch_virtual_workspace_bind(
             }
         }
         Operation::Virtual(Direction::North | Direction::West) => current_index.saturating_sub(1),
-        // The next workspace with windows that way, leaving empty ones out.
-        Operation::VirtualOccupied(Direction::South) => {
-            let Some(index) = rows
+        // The next workspace with windows that way, leaving empty ones out and
+        // wrapping around past either end.
+        Operation::VirtualOccupied(direction @ (Direction::North | Direction::South)) => {
+            let occupied = rows
                 .iter()
                 .enumerate()
-                .skip(current_index + 1)
-                .find(|(_, (_, strip, _))| !strip.all_windows().is_empty())
+                .filter(|(index, (_, strip, _))| {
+                    *index != current_index && !strip.all_windows().is_empty()
+                })
                 .map(|(index, _)| index)
-            else {
-                return;
+                .collect::<Vec<_>>();
+            let next = if matches!(direction, Direction::South) {
+                occupied
+                    .iter()
+                    .find(|index| **index > current_index)
+                    .or(occupied.first())
+            } else {
+                occupied
+                    .iter()
+                    .rev()
+                    .find(|index| **index < current_index)
+                    .or(occupied.last())
             };
-            index
-        }
-        Operation::VirtualOccupied(Direction::North) => {
-            let Some(index) = rows
-                .iter()
-                .enumerate()
-                .take(current_index)
-                .rev()
-                .find(|(_, (_, strip, _))| !strip.all_windows().is_empty())
-                .map(|(index, _)| index)
-            else {
+            let Some(&index) = next else {
                 return;
             };
             index

@@ -338,7 +338,7 @@ Virtual workspaces can also be navigated using trackpad gestures. If `[swipe.ges
 | :--- | :--- |
 | `window_virtual_north` / `_south` / `_first` / `_last` | Switch to the previous/next or first/last virtual workspace (row of windows), unconditionally. `_east` or `_west` are aliases for `_north` and `_south`. |
 | `window_virtualfocus_north` / `_south` | Like `window_virtual_north`/`_south`, but if the focused window is in a stack and has a neighbor above/below, focuses that neighbor instead of switching — the same within-column traversal as `window_focus_north`/`_south`. Only switches the virtual workspace once there's nothing left to focus that way. No `_east`/`_west`/`_first`/`_last` form (there's no "focus" reading to pair with those). |
-| `window_virtualopen_north` / `_south` | Switch to the previous/next virtual workspace that has windows, skipping empty ones. Never creates a workspace: at the first or last one with windows, it does nothing. |
+| `window_virtualopen_north` / `_south` | Switch to the previous/next virtual workspace that has windows, skipping empty ones and wrapping around past the first or last. Never creates a workspace; with only one that has windows, it does nothing. |
 | `window_virtualnum_<number>` | Switch directly to the numbered virtual workspace. |
 | `window_virtualmove_north` / `_south` / `_first` / `_last` | Move currently focused window to the previous/next or first/last virtual workspace and follow it. `_east` or `_west` are aliases for `_north` and `_south`. |
 | `window_virtualsend_north` / `_south` / `_first` / `_last` | Move currently focused window to the previous/next or first/last virtual workspace but stay on the current one. `_east` or `_west` are aliases for `_north` and `_south`. |
