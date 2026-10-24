@@ -335,6 +335,15 @@ impl MockState {
         }
     }
 
+    /// Whether window `id` is minimized in the Dock.
+    pub fn is_minimized(&self, id: WinID) -> bool {
+        self.inner
+            .force_read()
+            .windows
+            .get(&id)
+            .is_some_and(|window| window.minimized)
+    }
+
     #[allow(unused)]
     pub fn os_minimize_window(&self, id: WinID, minimized: bool) {
         let mut inner = self.inner.force_write();
@@ -638,6 +647,11 @@ impl MockState {
         // Fill in remaining defaults
         mw.expect_element().return_const(None);
         mw.expect_raise_without_focus().return_const(());
+
+        // Minimizing reports back the way macOS does.
+        let s_minimize = self.clone();
+        mw.expect_minimize()
+            .returning(move || s_minimize.os_minimize_window(id, true));
 
         // Focusing without raising still moves the OS focus, it just leaves the
         // window order alone. Only the app's idea of its focused window changes

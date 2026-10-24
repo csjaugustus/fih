@@ -1069,9 +1069,15 @@ pub(super) fn update_overlays(
         ))
     };
 
-    // A window filling the screen - fill screen, toggled to full width, or
-    // alone on its workspace - has no border: it would frame the whole screen.
-    let fills_screen = windows.full_width(entity).is_some()
+    // A floating window has no border, nor does a window filling the screen
+    // - fill screen, toggled to full width, or alone on its workspace: it
+    // would frame the whole screen.
+    let floating = matches!(
+        windows.get_managed(entity),
+        Some((_, _, Some(Unmanaged::Floating)))
+    );
+    let fills_screen = floating
+        || windows.full_width(entity).is_some()
         || display.single().is_ok_and(|(display, dock)| {
             let viewport = display.actual_display_bounds(dock, &config);
             window.frame().width() >= viewport.width() - 2

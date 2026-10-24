@@ -1,9 +1,11 @@
+use bevy::ecs::entity::Entity;
+use bevy::ecs::query::With;
 use bevy::ecs::world::World;
 
 use crate::commands::{Command, Direction, Operation};
 use crate::config::{Config, MainOptions, WindowParams};
-use crate::ecs::Unmanaged;
 use crate::ecs::layout::LayoutStrip;
+use crate::ecs::{FocusedMarker, Unmanaged};
 use crate::events::Event;
 
 use super::*;
@@ -82,4 +84,39 @@ fn tiled_window_returns_to_the_strip_after_minimize() {
             Event::WindowMinimized { window_id: 1 },
             Event::WindowDeminimized { window_id: 1 },
         ]);
+}
+
+#[test]
+fn left_or_right_from_a_floating_window_minimizes_it_and_returns_to_the_strip() {
+    let commands = vec![
+        Event::MenuOpened { window_id: 0 },
+        Event::Command {
+            command: Command::Window(Operation::Focus(Direction::Nth(1))),
+        },
+        Event::Command {
+            command: Command::Window(Operation::Manage),
+        },
+        Event::Command {
+            command: Command::Window(Operation::Focus(Direction::West)),
+        },
+        Event::Command {
+            command: Command::PrintState,
+        },
+    ];
+    TestHarness::new()
+        .with_windows(3)
+        .on_iteration(2, |world, _state| assert_floating(world, 1))
+        .on_iteration(4, |world, state| {
+            assert!(
+                state.is_minimized(1),
+                "the floating window is minimized out of the way"
+            );
+            let mut focused = world.query_filtered::<Entity, With<FocusedMarker>>();
+            let focused = focused.single(world).expect("a focused window");
+            assert!(
+                world.get::<Unmanaged>(focused).is_none(),
+                "focus is back on a tiled window"
+            );
+        })
+        .run(commands);
 }

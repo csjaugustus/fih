@@ -269,7 +269,7 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 
 | Action | Description |
 | :--- | :--- |
-| `window_focus_west` / `_east` | Focus window to the left/right. |
+| `window_focus_west` / `_east` | Focus window to the left/right. From a floating window, minimizes it and goes back to the workspace's last-focused tiled window. |
 | `window_focus_north` / `_south` | Focus window above/below. If no window exists, switches focus to the display in that direction. |
 | `window_focus_first` / `_last` | Jump to the start/end of the strip. |
 | `window_focus_managed` | Switch to a previously focused window on this workspace. |
@@ -583,7 +583,7 @@ color = "#000000"
 ```
 
 ### Active Window Border
-Draws a colored border around the currently focused window. A window that fills the screen (native fullscreen, `window_fullwidth`, toggled to full width, or alone on its workspace) never gets one.
+Draws a colored border around the currently focused window. A floating window never gets one, nor does a window that fills the screen (native fullscreen, `window_fullwidth`, toggled to full width, or alone on its workspace).
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |

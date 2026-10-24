@@ -387,6 +387,31 @@ fn active_focus_candidate(
     })
 }
 
+/// Left and right from a floating window go back to the strip: the floating
+/// window is minimized out of the way, and focus lands on the workspace's
+/// last-focused tiled window. Returns whether it did.
+fn leave_floating_for_strip(
+    direction: &Direction,
+    focused: Entity,
+    windows: &Windows,
+    commands: &mut Commands,
+) -> bool {
+    let Some((window, _, Some(Unmanaged::Floating))) = windows.get_managed(focused) else {
+        return false;
+    };
+    if !matches!(
+        direction,
+        Direction::West | Direction::East | Direction::First | Direction::Last
+    ) {
+        return false;
+    }
+    window.minimize();
+    commands.trigger(SendMessageTrigger(Event::Command {
+        command: Command::Window(Operation::FocusManaged),
+    }));
+    true
+}
+
 fn command_move_focus(
     mut messages: MessageReader<Event>,
     windows: Windows,
@@ -439,6 +464,10 @@ fn command_move_focus(
     let Some((_, focused_entity)) = windows.focused() else {
         return;
     };
+
+    if leave_floating_for_strip(direction, focused_entity, &windows, &mut commands) {
+        return;
+    }
 
     if let Some((_, _, Some(Unmanaged::Floating))) = windows.get_managed(focused_entity)
         && !matches!(direction, Direction::Nth(_))

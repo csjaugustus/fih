@@ -1,8 +1,9 @@
 use accessibility_sys::{
     AXUIElementCreateApplication, AXUIElementRef, AXValueCreate, AXValueGetValue,
     kAXErrorAttributeUnsupported, kAXErrorNoValue, kAXErrorSuccess, kAXFloatingWindowSubrole,
-    kAXPositionAttribute, kAXRaiseAction, kAXSizeAttribute, kAXStandardWindowSubrole,
-    kAXUnknownRole, kAXUnknownSubrole, kAXValueTypeCGPoint, kAXValueTypeCGSize, kAXWindowRole,
+    kAXMinimizedAttribute, kAXPositionAttribute, kAXRaiseAction, kAXSizeAttribute,
+    kAXStandardWindowSubrole, kAXUnknownRole, kAXUnknownSubrole, kAXValueTypeCGPoint,
+    kAXValueTypeCGSize, kAXWindowRole,
 };
 use bevy::ecs::component::Component;
 use bevy::math::IRect;
@@ -317,6 +318,8 @@ pub trait WindowApi: Send + Sync {
     /// shuffle the floating-vs-tiled tier order. Best-effort: AX raise can't
     /// lift a window above another app's frontmost window.
     fn raise_without_focus(&self);
+    /// Minimizes the window into the Dock.
+    fn minimize(&self);
     fn pid(&self) -> Result<Pid>;
     fn set_padding(&mut self, padding: WindowPadding);
     fn horizontal_padding(&self) -> i32;
@@ -957,6 +960,18 @@ impl WindowApi for WindowOS {
         let element_ref = self.ax_element.as_ptr();
         let action = CFString::from_static_str(kAXRaiseAction);
         unsafe { AXUIElementPerformAction(element_ref, &action) };
+    }
+
+    fn minimize(&self) {
+        if let Some(value) = unsafe { kCFBooleanTrue } {
+            unsafe {
+                AXUIElementSetAttributeValue(
+                    self.ax_element.as_ptr(),
+                    CFString::from_static_str(kAXMinimizedAttribute).as_ref(),
+                    value,
+                )
+            };
+        }
     }
 
     fn pid(&self) -> Result<Pid> {
