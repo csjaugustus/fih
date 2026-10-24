@@ -19,12 +19,23 @@
 | Turn neck to find window | Window come to you |
 | Open window, other window shrink | Open window, nothing shrink. Strip grow |
 | Unplug laptop, layout explode | Layout no care |
+| Need more room, buy more monitor | Need more room, stack more strip. Free |
 
 ## How work
 
 Window sit side by side on strip. Strip go right forever. Screen is little hole you look through. Swipe four finger or press key, strip slide. Window you want slide into hole.
 
+Fih not only go side to side. Fih go up and down too. Strip stack on strip, one per workspace: code strip, chat strip, play strip. ⌃⌥ ↑ ↓ jump to next strip with window in it. Empty one? Fih skip. No new one made by accident. Is like many monitor, but monitor stack in air and cost zero.
+
 Need one window always there? Pin it. It hold left or right half. Rest of strip slide in other half.
+
+One window, fih make it fill screen. Open second, both take half. Fih no make you drag edge.
+
+## Strip map
+
+Move, little map show at bottom. One icon per window. Teal = where you are. Faded = off screen. Lock = pinned. Number at left = which workspace.
+
+Go up or down, map grow tall: every strip stack in map, one row each, yours glow teal. You see whole tower at once, then map fade away. Click icon in map, fih take you there.
 
 ## Get
 
@@ -78,15 +89,13 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 | ⌃⌥ T | Float. Again = back in strip |
 | ⌃⌥ Q | Quit |
 
-Move around, little strip map show at bottom: one icon per window, workspace number at left. Teal = where you are. Faded = off screen. Go up or down workspace, map show every workspace with window, one row each. Click icon, go there.
-
 Chat and settings app (WeChat, Telegram, System Settings, QuickTime, Affinity Publisher) float, not go in strip.
 
 Want other key? Fih make `~/.config/fih/fih.toml` first time. Change it, fih see change by itself. Menu bar fish → **Open Config File** to find it. No know how? Ask AI.
 
 ## Where from
 
-Fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do hard part. Fih add pin, snap, step resize, strip map, workspace on ⌥ number, and fish.
+Fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do hard part. Fih add pin, snap, strip map, up-and-down strip, auto fill, and fish.
 
 README talk like [caveman](https://github.com/juliusbrussee/caveman). Good repo. Make AI talk less too.
 
