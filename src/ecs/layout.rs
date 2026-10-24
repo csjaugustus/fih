@@ -1642,20 +1642,21 @@ pub(super) fn reshuffle_layout_strip(
         // Enforce the edge invariant when auto-center is off: the leftmost
         // window must touch the left edge and the rightmost the right edge
         // if more than 1 windows in workspace.
+        // The strip's width is summed from where each column is heading:
+        // mid-resize, the laid-out positions still reflect the old widths.
         if !config.auto_center()
             && !config.continuous_swipe()
             && let Some(total_strip_width) = ctx
                 .strip
-                .last()
-                .ok()
-                .and_then(|column| column.top())
-                .and_then(|last| {
-                    windows
-                        .layout_position(last)
-                        .map(|position| position.0.x)
-                        .zip(windows.moving_frame(last).map(|frame| frame.width()))
+                .columns()
+                .map(|column| {
+                    column
+                        .top()
+                        .and_then(|top| windows.moving_frame(top))
+                        .map(|frame| frame.width())
                 })
-                .map(|(last_x, last_width)| last_x + last_width)
+                .sum::<Option<i32>>()
+                .filter(|width| *width > 0)
         {
             strip_position.x = if display_bounds.width() < total_strip_width {
                 strip_position.x.clamp(

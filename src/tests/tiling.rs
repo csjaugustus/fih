@@ -1431,3 +1431,58 @@ fn closing_a_third_widens_the_rest_and_opening_one_narrows_them_back() {
     close_runtime_window(&mut harness, 1);
     assert_eq!(widths(&mut harness, &[0]), [TEST_DISPLAY_WIDTH]);
 }
+
+fn window_frame(world: &mut World, window_id: i32) -> IRect {
+    let entity = find_window_entity(window_id, world);
+    world.get::<crate::manager::Window>(entity).unwrap().frame()
+}
+
+#[test]
+fn auto_filled_windows_all_land_in_view() {
+    // As in the shipped config: no auto-centre, and the strip kept against
+    // the screen edges.
+    let config = Config::try_from(
+        "[options]\nauto_fill_width = true\nauto_center = false\nanimation_speed = 30\n[swipe]\ncontinuous = false\n[bindings]\n",
+    )
+    .expect("config should parse");
+    let mut harness = TestHarness::new().with_config(config).with_windows(0);
+    harness.advance(Duration::from_millis(100));
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::Command {
+            command: Command::Window(Operation::SetColumns(3)),
+        });
+    harness.advance(Duration::from_millis(100));
+
+    for (count, ids) in [(1, vec![0]), (2, vec![0, 1]), (3, vec![0, 1, 2])] {
+        // Apps open new windows mid-screen, not at the left edge.
+        let frame = IRect::from_center_size(
+            IVec2::new(TEST_DISPLAY_WIDTH / 2, TEST_DISPLAY_HEIGHT / 2),
+            IVec2::new(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT),
+        );
+        let window =
+            harness
+                .mock_state
+                .spawn_window(TEST_PROCESS_ID, TEST_WORKSPACE_ID, count - 1, frame);
+        harness
+            .app
+            .world_mut()
+            .trigger(SpawnWindowTrigger(vec![window]));
+        harness.advance(Duration::from_secs(1));
+        let mut frames = ids
+            .iter()
+            .map(|id| window_frame(harness.world(), *id))
+            .collect::<Vec<_>>();
+        frames.sort_by_key(|frame| frame.min.x);
+        assert_eq!(
+            frames[0].min.x, 0,
+            "{count} windows should start at the left edge: {frames:?}"
+        );
+        // Thirds of an odd width round down by a pixel.
+        assert!(
+            (frames.last().unwrap().max.x - TEST_DISPLAY_WIDTH).abs() <= 2,
+            "{count} windows should end at the right edge: {frames:?}"
+        );
+    }
+}
