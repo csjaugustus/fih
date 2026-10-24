@@ -1,6 +1,6 @@
 # Lua Scripting Guide
 
-Raven embeds a Lua runtime, letting a script declare the entire configuration via `paneru.setup{...}`, hook into window-manager events (`paneru.on`), bind keys to Lua callbacks or command strings (`paneru.bind`), query state, persist data across reloads, and programmatically manipulate window sets.
+fih embeds a Lua runtime, letting a script declare the entire configuration via `paneru.setup{...}`, hook into window-manager events (`paneru.on`), bind keys to Lua callbacks or command strings (`paneru.bind`), query state, persist data across reloads, and programmatically manipulate window sets.
 
 ---
 
@@ -8,22 +8,22 @@ Raven embeds a Lua runtime, letting a script declare the entire configuration vi
 
 ### Script Locations
 
-By default, Raven looks for a Lua script in the following locations (in order):
+By default, fih looks for a Lua script in the following locations (in order):
 
-1. `$RAVEN_LUA` (environment variable)
-2. `$HOME/.raven.lua`
-3. `$XDG_CONFIG_HOME/raven/init.lua`
+1. `$FIH_LUA` (environment variable)
+2. `$HOME/.fih.lua`
+3. `$XDG_CONFIG_HOME/fih/init.lua`
 
 ### TOML Replacement
 
-**A script replaces the TOML.** When any of those files exist, the TOML path is switched off completely: no `raven.toml` is read, created, or watched, and anything the script does not set takes its built-in default. Two authoritative configs cannot coexist, so a leftover TOML never quietly overrides the script. Conversely, no `init.lua` is created for you when a `raven.toml` already exists — TOML setups keep working untouched until you write a script yourself.
+**A script replaces the TOML.** When any of those files exist, the TOML path is switched off completely: no `fih.toml` is read, created, or watched, and anything the script does not set takes its built-in default. Two authoritative configs cannot coexist, so a leftover TOML never quietly overrides the script. Conversely, no `init.lua` is created for you when a `fih.toml` already exists — TOML setups keep working untouched until you write a script yourself.
 
 Like the TOML config, the script is automatically reloaded when the file is saved.
 
-Raven provides the `paneru` table as a global in `init.lua`. You can also write
+fih provides the `paneru` table as a global in `init.lua`. You can also write
 `local paneru = require("paneru")` there; it returns the same embedded API and
 does not need a separate `paneru.so` file. The loadable `paneru.so` client module
-is only for Lua scripts run outside Paneru. Installing the Raven executable
+is only for Lua scripts run outside Paneru. Installing the fih executable
 with `cargo install` does not install that separate module.
 
 ```lua
@@ -38,7 +38,7 @@ paneru.bind("alt - j", "window focus east")
 
 ## 2. Configuration from Lua (`paneru.setup`)
 
-`paneru.setup{...}` declares the whole configuration from Lua, so `init.lua` can replace `raven.toml` entirely. The table mirrors the TOML sections one-for-one — `options`, `padding`, `swipe`, `decorations`, `restore`, `windows`, and top-level `default_workspaces`.
+`paneru.setup{...}` declares the whole configuration from Lua, so `init.lua` can replace `fih.toml` entirely. The table mirrors the TOML sections one-for-one — `options`, `padding`, `swipe`, `decorations`, `restore`, `windows`, and top-level `default_workspaces`.
 
 ```lua
 paneru.setup {
@@ -82,7 +82,7 @@ paneru.setup {
 
 The active configuration is exposed on `paneru.config`, mirroring the `paneru.setup` schema (`paneru.config.options`, `paneru.config.padding`, `paneru.config.swipe`, `paneru.config.decorations`, `paneru.config.restore`, `paneru.config.windows`, and `paneru.config.default_workspaces`).
 
-- **Pre-populated with defaults:** Even before (or without) calling `paneru.setup`, `paneru.config` is populated with Raven's built-in defaults (e.g., `paneru.config.options.sliver_width == 5`, `paneru.config.options.preset_column_widths`, etc.).
+- **Pre-populated with defaults:** Even before (or without) calling `paneru.setup`, `paneru.config` is populated with fih's built-in defaults (e.g., `paneru.config.options.sliver_width == 5`, `paneru.config.options.preset_column_widths`, etc.).
 - **Merged on `paneru.setup`:** Calling `paneru.setup{...}` merges your configuration table over the resolved defaults (and preserves any extra custom keys you include in the table).
 - **Read-only snapshot semantics:** `paneru.config` is a plain Lua table for inspection by snippets and callbacks. Mutating fields on `paneru.config` directly does **not** change the running window manager's settings unless you pass the modified table back to `paneru.setup(paneru.config)`.
 
@@ -95,7 +95,7 @@ end)
 
 ### Precedence & Reloading
 
-An `init.lua` disables the TOML entirely, whether or not it calls `paneru.setup`. With `setup`, that table is the configuration; without it, the built-in defaults are used — never a `raven.toml` sitting next to the script. To keep using TOML, do not create a script.
+An `init.lua` disables the TOML entirely, whether or not it calls `paneru.setup`. With `setup`, that table is the configuration; without it, the built-in defaults are used — never a `fih.toml` sitting next to the script. To keep using TOML, do not create a script.
 
 Editing and saving `init.lua` hot-reloads the whole configuration (including menubar and passthrough updates), just like editing the TOML file.
 
@@ -146,7 +146,7 @@ end)
 
 | Event Name | Description | Event Payload Fields |
 | --- | --- | --- |
-| `window_spawned` | A window was fully spawned and initialized in Raven | `type`, `window_id`, `pid`, `app_name`, `bundle_id`, `title`, `role`, `subrole`, `frame` (`{x, y, width, height}`), `floating`, `managed` |
+| `window_spawned` | A window was fully spawned and initialized in fih | `type`, `window_id`, `pid`, `app_name`, `bundle_id`, `title`, `role`, `subrole`, `frame` (`{x, y, width, height}`), `floating`, `managed` |
 | `window_focused` | A window gained focus | `type`, `window_id` |
 | `window_destroyed` | A window was closed / destroyed | `type`, `window_id` |
 | `window_moved` | A window was moved | `type`, `window_id` |
@@ -166,7 +166,7 @@ end)
 
 ## 4. Querying State
 
-Inside a `paneru.on` handler or a `paneru.bind` callback, the script can read the same state documents `raven query …` returns — no round trip, no `io.popen`:
+Inside a `paneru.on` handler or a `paneru.bind` callback, the script can read the same state documents `fih query …` returns — no round trip, no `io.popen`:
 
 ```lua
 paneru.on("window_focused", function(event, ws)

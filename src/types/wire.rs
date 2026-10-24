@@ -18,11 +18,11 @@ pub use async_mach_ports::{Codec, Error, RecvPort, SendPort};
 /// Matches the launchd job's `Label` and its `MachServices` key, which is what
 /// lets a service-started daemon check in with a port launchd already holds
 /// rather than registering one of its own.
-pub const SERVICE_NAME: &str = "com.github.csjaugustus.raven";
+pub const SERVICE_NAME: &str = "com.github.csjaugustus.fih";
 
 /// The environment variable that overrides [`SERVICE_NAME`], so a development
 /// build can run beside an installed one.
-pub const SERVICE_ENV: &str = "RAVEN_MACH_SERVICE";
+pub const SERVICE_ENV: &str = "FIH_MACH_SERVICE";
 
 /// The service name to use, honouring [`SERVICE_ENV`].
 #[must_use]

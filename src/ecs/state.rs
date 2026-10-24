@@ -319,7 +319,7 @@ impl PaneruState {
     }
 
     pub fn default_state_file_path() -> PathBuf {
-        xdg::BaseDirectories::with_prefix("raven")
+        xdg::BaseDirectories::with_prefix("fih")
             .get_state_file(STATE_FILE_NAME)
             .expect("XDG state directory should be available")
     }

@@ -16,10 +16,10 @@ use crate::errors::{Error, Result};
 ///
 /// # Errors
 ///
-/// Returns a plain "raven is not running" error when no daemon is running.
+/// Returns a plain "fih is not running" error when no daemon is running.
 fn connect() -> Result<Sender<Request>> {
     wire::connect(&service_name()).map_err(|err| match err {
-        WireError::NotRunning => Error::Generic("raven is not running".to_string()),
+        WireError::NotRunning => Error::Generic("fih is not running".to_string()),
         other => Error::from(other),
     })
 }

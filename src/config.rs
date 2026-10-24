@@ -69,7 +69,7 @@ pub static CONFIGURATION_FILE: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
     }))
 });
 
-const DEFAULT_CONFIGURATION: &str = "# Raven configuration\n\n[options]\n\n[bindings]\n";
+const DEFAULT_CONFIGURATION: &str = "# fih configuration\n\n[options]\n\n[bindings]\n";
 
 fn default_configuration_file() -> std::io::Result<PathBuf> {
     let config_home = env::var_os("XDG_CONFIG_HOME")
@@ -82,7 +82,7 @@ fn default_configuration_file() -> std::io::Result<PathBuf> {
             )
         })?;
 
-    Ok(config_home.join("raven").join("raven.toml"))
+    Ok(config_home.join("fih").join("fih.toml"))
 }
 
 fn create_default_configuration_file() -> std::io::Result<PathBuf> {
@@ -112,29 +112,27 @@ fn create_configuration_file_at(path: &Path) -> std::io::Result<bool> {
 /// Finds the first existing configuration file from supported locations.
 /// Unlike [`CONFIGURATION_FILE`], this does not panic when no file is found.
 pub fn discover_configuration_file() -> Option<PathBuf> {
-    if let Ok(path_str) = env::var("RAVEN_CONFIG") {
+    if let Ok(path_str) = env::var("FIH_CONFIG") {
         let path = PathBuf::from(path_str);
         if path.exists() {
             return Some(path);
         }
         warn!(
-            "{}: $RAVEN_CONFIG is set to {}, but the file does not exist. Falling back to default locations.",
+            "{}: $FIH_CONFIG is set to {}, but the file does not exist. Falling back to default locations.",
             function_name!(),
             path.display()
         );
     }
 
     let standard_paths = [
+        env::var("HOME").ok().map(|h| PathBuf::from(h).join(".fih")),
         env::var("HOME")
             .ok()
-            .map(|h| PathBuf::from(h).join(".raven")),
-        env::var("HOME")
-            .ok()
-            .map(|h| PathBuf::from(h).join(".raven.toml")),
+            .map(|h| PathBuf::from(h).join(".fih.toml")),
     ];
 
-    let xdg_dirs = xdg::BaseDirectories::with_prefix("raven");
-    let xdg_config_paths = xdg_dirs.find_config_files("raven.toml");
+    let xdg_dirs = xdg::BaseDirectories::with_prefix("fih");
+    let xdg_config_paths = xdg_dirs.find_config_files("fih.toml");
 
     standard_paths
         .into_iter()
@@ -176,20 +174,20 @@ fn default_lua_file() -> std::io::Result<PathBuf> {
             )
         })?;
 
-    Ok(config_home.join("raven").join("init.lua"))
+    Ok(config_home.join("fih").join("init.lua"))
 }
 
 /// Finds the first existing Lua init script from supported locations, mirroring
-/// [`discover_configuration_file`]. Honors `$RAVEN_LUA` first.
+/// [`discover_configuration_file`]. Honors `$FIH_LUA` first.
 #[cfg(feature = "lua")]
 pub fn discover_lua_file() -> Option<PathBuf> {
-    if let Ok(path_str) = env::var("RAVEN_LUA") {
+    if let Ok(path_str) = env::var("FIH_LUA") {
         let path = PathBuf::from(path_str);
         if path.exists() {
             return Some(path);
         }
         warn!(
-            "{}: $RAVEN_LUA is set to {}, but the file does not exist. Falling back to default locations.",
+            "{}: $FIH_LUA is set to {}, but the file does not exist. Falling back to default locations.",
             function_name!(),
             path.display()
         );
@@ -197,9 +195,9 @@ pub fn discover_lua_file() -> Option<PathBuf> {
 
     let standard_paths = [env::var("HOME")
         .ok()
-        .map(|h| PathBuf::from(h).join(".raven.lua"))];
+        .map(|h| PathBuf::from(h).join(".fih.lua"))];
 
-    let xdg_dirs = xdg::BaseDirectories::with_prefix("raven");
+    let xdg_dirs = xdg::BaseDirectories::with_prefix("fih");
     let xdg_paths = xdg_dirs.find_config_files("init.lua");
 
     standard_paths
@@ -1025,7 +1023,7 @@ impl Config {
             .and_then(|decorations| decorations.menu.as_ref())
             .and_then(|menubar| menubar.descriptor.as_ref())
             .and_then(|descriptor_options| descriptor_options.symbol.clone())
-            .unwrap_or(String::from("fish.fill"))
+            .unwrap_or(String::from(crate::menubar::FIH_MARK_SYMBOL))
     }
     pub fn menubar_indicator_style(&self) -> IndicatorStyle {
         self.inner()

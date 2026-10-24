@@ -1,12 +1,12 @@
 # Query and Subscribe Format
 
-Raven exposes structured state over the same IPC channel used by `send-cmd`:
-a Mach service named `com.github.csjaugustus.raven`. The CLI commands below
-require a running Raven daemon.
+fih exposes structured state over the same IPC channel used by `send-cmd`:
+a Mach service named `com.github.csjaugustus.fih`. The CLI commands below
+require a running fih daemon.
 
 **The JSON below is what the CLI prints, not what crosses between processes.**
 Requests and responses travel as typed values in a compact binary encoding
-(`postcard`); `raven query` and `raven subscribe` render them as JSON because
+(`postcard`); `fih query` and `fih subscribe` render them as JSON because
 a terminal — and `jq`, and a status bar's shell script — needs text. Anything
 consuming these commands' output sees exactly the shapes documented here.
 
@@ -20,15 +20,15 @@ line-delimited JSON, with one complete event object per line.
 ## Query Commands
 
 ```shell
-raven query state --json
-raven query virtual-workspaces --json
-raven query active --json
+fih query state --json
+fih query virtual-workspaces --json
+fih query active --json
 ```
 
 `--json` is accepted for clarity and is the only output format, so it may be
 omitted; callers should include it anyway, in case another format is ever added.
 
-### `raven query state --json`
+### `fih query state --json`
 
 Returns the complete state document.
 
@@ -79,7 +79,7 @@ Returns the complete state document.
 }
 ```
 
-### `raven query virtual-workspaces --json`
+### `fih query virtual-workspaces --json`
 
 Returns only the `virtual_workspaces` array from the complete state document.
 
@@ -117,7 +117,7 @@ Returns only the `virtual_workspaces` array from the complete state document.
 ]
 ```
 
-### `raven query active --json`
+### `fih query active --json`
 
 Returns only the active display, workspace, and focused-window state.
 
@@ -142,7 +142,7 @@ Returns only the active display, workspace, and focused-window state.
 | `active` | object | Current active display/native workspace/virtual workspace/focused window. |
 | `display_id` | number or null | CoreGraphics display id for the active display, when known. |
 | `native_workspace_id` | number or null | macOS Space id for the active native workspace, when known. |
-| `virtual_workspace_number` | number or null | One-based Raven virtual workspace number, when known. |
+| `virtual_workspace_number` | number or null | One-based fih virtual workspace number, when known. |
 | `focused_window_id` | number or null | Focused window id, when known. |
 | `focused_bundle_id` | string or null | Bundle id of the focused window's app, when known. |
 | `focused_app_name` | string or null | Display name of the focused window's app, when known. |
@@ -160,23 +160,23 @@ Returns only the active display, workspace, and focused-window state.
 | `focused` | boolean | Whether this window is focused. |
 | `floating` | boolean | Whether this window is unmanaged/floating. |
 
-Raven may include empty `windows` arrays for missing virtual workspace numbers
+fih may include empty `windows` arrays for missing virtual workspace numbers
 inside a native workspace so integrations can render stable numbered slots.
 
 ## Subscribe Command
 
 ```shell
-raven subscribe --json
+fih subscribe --json
 ```
 
 `subscribe` keeps its channel open and writes one JSON event per line. The stream
 is intended for integrations such as SketchyBar, so it emits changes that are
 useful for keeping a bar in sync: focus changes, native or virtual workspace
 changes, managed window-list changes, window title changes, and display changes.
-Raven coalesces duplicate internal events from the same ECS tick and skips
+fih coalesces duplicate internal events from the same ECS tick and skips
 events whose relevant state has not changed since the last emitted event.
 Consumers should parse each line independently and then call
-`raven query state --json` when they need a full refresh.
+`fih query state --json` when they need a full refresh.
 
 ### Event Types
 
@@ -184,7 +184,7 @@ Consumers should parse each line independently and then call
 {"event":"virtual_workspace_changed","active":{"display_id":1,"native_workspace_id":4,"virtual_workspace_number":3,"focused_window_id":321,"focused_bundle_id":"com.apple.Terminal","focused_app_name":"Terminal","focused_window_title":"paneru"}}
 ```
 
-Emitted after native Space changes and Raven virtual workspace switches. Raven
+Emitted after native Space changes and fih virtual workspace switches. fih
 derives this from both incoming workspace events and ECS active-workspace marker
 changes, so integrations receive the event when the visible workspace state
 changes.
@@ -194,15 +194,15 @@ changes.
 ```
 
 Emitted after managed window creation/destruction/minimize/deminimize events and
-after Raven moves or sends a window between virtual workspaces. The event is
-emitted only when Raven's virtual workspace/window state differs from the last
+after fih moves or sends a window between virtual workspaces. The event is
+emitted only when fih's virtual workspace/window state differs from the last
 emitted `windows_changed` event.
 
 ```json
 {"event":"window_focused","window_id":321,"bundle_id":"com.apple.Terminal","title":"paneru","virtual_workspace_number":3}
 ```
 
-Emitted when focus changes. Raven derives this from both incoming focus events
+Emitted when focus changes. fih derives this from both incoming focus events
 and ECS focused-window marker changes, so internally handled focus transitions
 are visible to subscribers. The `window_id`, `bundle_id`, `title`, and
 `virtual_workspace_number` fields are taken from the final active state for the
@@ -220,7 +220,7 @@ Emitted when a window title changes.
 ```
 
 Emitted when display configuration changes. `display_id` can be `null` when the
-event is a global display-change notification and Raven cannot resolve an
+event is a global display-change notification and fih cannot resolve an
 active display id.
 
 ## Virtual Workspace Commands
@@ -228,9 +228,9 @@ active display id.
 Absolute virtual workspace selection is addressed as a window command:
 
 ```shell
-raven send-cmd window virtualnum 3
-raven send-cmd window virtualmovenum 3
-raven send-cmd window virtualsendnum 3
+fih send-cmd window virtualnum 3
+fih send-cmd window virtualmovenum 3
+fih send-cmd window virtualsendnum 3
 ```
 
 The matching config binding names are:

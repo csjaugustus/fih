@@ -75,8 +75,8 @@ pub struct MenubarDescriptorOptions {
     /// Text string preceding VW #(s)
     /// Defaults to "VW"
     pub text: Option<String>,
-    /// Symbol System Name (SF Symbols)
-    /// Defaults to "fish.fill"
+    /// Symbol System Name (SF Symbols), or "fih" for the built-in fih mark.
+    /// Defaults to "fih"
     pub symbol: Option<String>,
 }
 #[derive(Deserialize, Debug, Clone, Copy, Default)]

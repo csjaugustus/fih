@@ -64,8 +64,8 @@ pub(super) fn from_lua_value(lua: &Lua, value: Value, call: &str) -> mlua::Resul
 /// no reformatting.
 fn extend_lua_search_paths(lua: &Lua) -> mlua::Result<()> {
     let package: Table = lua.globals().get("package")?;
-    prepend_env_path(&package, "path", "RAVEN_LUA_PATH")?;
-    prepend_env_path(&package, "cpath", "RAVEN_LUA_CPATH")?;
+    prepend_env_path(&package, "path", "FIH_LUA_PATH")?;
+    prepend_env_path(&package, "cpath", "FIH_LUA_CPATH")?;
     Ok(())
 }
 
@@ -1110,12 +1110,12 @@ mod tests {
         let world = TestWorld::default();
         // Unique var name so this doesn't race other tests' env state.
         // SAFETY: no other test reads or writes this variable.
-        unsafe { std::env::set_var("RAVEN_LUA_PATH", "/tmp/paneru-test/?.lua") };
+        unsafe { std::env::set_var("FIH_LUA_PATH", "/tmp/paneru-test/?.lua") };
         let runtime = world.runtime("").unwrap();
         let package: Table = runtime.lua().globals().get("package").unwrap();
         let path: String = package.get("path").unwrap();
         // SAFETY: no other test reads or writes this variable.
-        unsafe { std::env::remove_var("RAVEN_LUA_PATH") };
+        unsafe { std::env::remove_var("FIH_LUA_PATH") };
         assert!(
             path.starts_with("/tmp/paneru-test/?.lua;"),
             "expected the extra path to be prepended, got {path}"

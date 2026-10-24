@@ -1569,7 +1569,7 @@ mod config_event_tests {
 
     fn temp_config(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "raven-config-event-{name}-{}.toml",
+            "fih-config-event-{name}-{}.toml",
             std::process::id()
         ));
         std::fs::write(&path, "[options]\n").unwrap();

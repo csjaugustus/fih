@@ -4,8 +4,8 @@ version = "0.5.2"
 edition = "2024"
 rust-version = "1.95.0"
 description = "A sliding, tiling window manager for MacOS."
-homepage = "https://github.com/karinushka/paneru"
-repository = "https://github.com/karinushka/paneru"
+homepage = "https://github.com/csjaugustus/fih"
+repository = "https://github.com/csjaugustus/fih"
 readme = "README.md"
 license = "MIT"
 categories = ["os::macos-apis"]
@@ -17,7 +17,7 @@ path = "src/lib.rs"
 crate-type = ["rlib", "cdylib"]
 
 [[bin]]
-name = "raven"
+name = "fih"
 path = "src/main.rs"
 
 [lints.clippy]
@@ -127,6 +127,7 @@ objc2-foundation = { version = "0.3", features = [
   "NSAttributedString",
   "NSDictionary",
   "NSBundle",
+  "NSData",
 ] }
 regex = "1.13"
 rmp-serde = "1.2"

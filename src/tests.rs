@@ -40,7 +40,7 @@ use crate::platform::WorkspaceId;
 fn showmenu_is_a_direct_subcommand() {
     use clap::Parser;
 
-    let cli = crate::Paneru::try_parse_from(["raven", "showmenu"]).unwrap();
+    let cli = crate::Paneru::try_parse_from(["fih", "showmenu"]).unwrap();
     assert!(matches!(cli.subcmd, Some(crate::SubCmd::ShowMenu)));
-    assert!(crate::Paneru::try_parse_from(["raven", "showmenu", "extra"]).is_err());
+    assert!(crate::Paneru::try_parse_from(["fih", "showmenu", "extra"]).is_err());
 }

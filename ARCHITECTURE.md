@@ -1,19 +1,19 @@
-# Raven Architecture
+# fih Architecture
 
-This document provides a high-level overview of Raven's architecture for contributors. Raven is a macOS window manager built using the **Bevy Game Engine** and its **Entity Component System (ECS)**.
+This document provides a high-level overview of fih's architecture for contributors. fih is a macOS window manager built using the **Bevy Game Engine** and its **Entity Component System (ECS)**.
 
 ## 1. High-Level Overview
 
-Raven manages macOS windows as a **sliding strip** (inspired by Niri and PaperWM). The core design philosophy is **Data-Driven/ECS**: instead of managing windows as complex objects with internal state, we represent the "World" as a collection of simple data components (Windows, Displays, Workspaces) that are processed by systems.
+fih manages macOS windows as a **sliding strip** (inspired by Niri and PaperWM). The core design philosophy is **Data-Driven/ECS**: instead of managing windows as complex objects with internal state, we represent the "World" as a collection of simple data components (Windows, Displays, Workspaces) that are processed by systems.
 
-The primary problem Raven solves is providing a predictable, stable, and ergonomic tiling experience on macOS. By using Bevy's ECS, we gain:
+The primary problem fih solves is providing a predictable, stable, and ergonomic tiling experience on macOS. By using Bevy's ECS, we gain:
 - **Declarative Logic:** Systems react to changes in window properties (e.g., `Changed<Position>`).
 - **High Performance:** Parallel system execution and efficient change detection.
 - **Modularity:** Functionality is divided into decoupled plugins and systems.
 
 ## 2. The Bevy Bridge
 
-Bevy is typically used for games, so Raven implements a custom bridge to interact with the macOS Window Server.
+Bevy is typically used for games, so fih implements a custom bridge to interact with the macOS Window Server.
 
 ### Event Ingestion (macOS -> ECS)
 1.  **Platform Layer:** `src/platform/` uses `objc2` and AppKit to interface with macOS. It runs a native event loop or hooks into OS notifications.
@@ -26,7 +26,7 @@ Bevy is typically used for games, so Raven implements a custom bridge to interac
 2.  **Commit Systems:** In the `PostUpdate` phase, specialized systems like `commit_window_position` and `commit_window_size` identify windows that need updating.
 3.  **FFI Calls:** These systems call methods on the `Window` trait object (implemented by `WindowOS` in `src/manager/windows.rs`), which performs the actual accessibility API calls to move or resize the physical macOS window.
 
-**Note:** All AppKit/Accessibility calls must happen on the **Main Thread**. Raven ensures this by using `NonSend` resources and executing critical synchronization systems on the main thread.
+**Note:** All AppKit/Accessibility calls must happen on the **Main Thread**. fih ensures this by using `NonSend` resources and executing critical synchronization systems on the main thread.
 
 ### The Lua Worker (optional `lua` feature)
 
@@ -94,8 +94,8 @@ This is what keeps `src/lua/runtime.rs` free of any `bevy` import: it reaches th
 ## 6. Session Restore
 
 `src/ecs/state.rs` extracts and persists the restart snapshot. The state file is
-written atomically to `raven/state.json` in the XDG state directory
-(`~/.local/state/raven/state.json` on a default macOS setup) and is loaded
+written atomically to `fih/state.json` in the XDG state directory
+(`~/.local/state/fih/state.json` on a default macOS setup) and is loaded
 during Bevy app setup.
 
 `src/ecs/restore.rs` owns startup restore. It keeps the loaded `PaneruState`

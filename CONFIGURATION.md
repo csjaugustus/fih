@@ -1,13 +1,13 @@
 # Configuration Guide
 
-Raven is configured via a TOML file *or* a Lua script — never both. By
+fih is configured via a TOML file *or* a Lua script — never both. By
 default, it looks for the TOML configuration in the following locations (in
 order):
 
-1.  `$RAVEN_CONFIG` (environment variable)
-2.  `$HOME/.raven`
-3.  `$HOME/.raven.toml`
-4.  `$XDG_CONFIG_HOME/raven/raven.toml`
+1.  `$FIH_CONFIG` (environment variable)
+2.  `$HOME/.fih`
+3.  `$HOME/.fih.toml`
+4.  `$XDG_CONFIG_HOME/fih/fih.toml`
 
 The configuration is automatically reloaded when the file is saved.
 
@@ -39,8 +39,8 @@ General behavior settings for the window manager.
 | `window_height_step` | Float (0.01–1.0) | `0.1` | Fraction of the viewport height that `window_taller` / `window_shorter` add or remove from a stacked window. |
 | `mouse_resize_modifier` | String | *None* | If enabled allows window resizing using mouse movement. For example `cmd + shift` will allow resizing of the window when holding those keys. Proximity of the pointer to left or right window edge determines which side will be adjusted. |
 | `reap_empty_workspaces` | String | `false` | If enabled, a virtual workspace without any windows will be removed. |
-| `disable_native_tabs` | Boolean | `false` | If enabled, Raven will not auto-merge a window into a tab group with an existing same-app sibling that shares its frame. Merging happens when the window is created, and again for a background tab that the window server stops showing while a sibling of the same app holds the same frame — an app that hides its old tab a moment late would otherwise leave a column nothing can appear in. Use this if you find unrelated windows being grouped together. |
-| `virtual_workspace_animations` | Boolean | `false` | If enabled, Raven will animate virtual workspace swaps. Off by default, because people use virtual workspaces due to the slow animation of the native macOS workspaces. |
+| `disable_native_tabs` | Boolean | `false` | If enabled, fih will not auto-merge a window into a tab group with an existing same-app sibling that shares its frame. Merging happens when the window is created, and again for a background tab that the window server stops showing while a sibling of the same app holds the same frame — an app that hides its old tab a moment late would otherwise leave a column nothing can appear in. Use this if you find unrelated windows being grouped together. |
+| `virtual_workspace_animations` | Boolean | `false` | If enabled, fih will animate virtual workspace swaps. Off by default, because people use virtual workspaces due to the slow animation of the native macOS workspaces. |
 | `insert_windows_mid_strip` | Boolean | `false` | When moving a window to another virtual workspace, insert it at the column matching its current on-screen position (keeping it where you see it and shifting the rest) instead of appending it to the end of the destination strip. |
 | `create_virtual_workspace_automatically` | Boolean | `false` | Automatically creates a new virtual workspace when using `window_virtual_south `or Southward gesture controls. |
 
@@ -80,7 +80,7 @@ Configure trackpad gestures and scroll-wheel window sliding.
 | `page_distance_cm` | Positive float | `2.0` | Approximate horizontal finger travel in centimeters required for each page when `paging = true`. |
 | `haptics` | Boolean | `true` | Emit a haptic pulse after each confirmed paging focus change. Set to `false` to disable pulses. |
 
-When `fingers_count` is omitted or set below 3, Raven does not intercept native macOS gestures. If macOS uses three-finger horizontal swipes for Spaces, prefer `[swipe.scroll]` with a modifier or configure a different finger count.
+When `fingers_count` is omitted or set below 3, fih does not intercept native macOS gestures. If macOS uses three-finger horizontal swipes for Spaces, prefer `[swipe.scroll]` with a modifier or configure a different finger count.
 
 Paging estimates physical distance from the trackpad's reported device size. The centimeter threshold may feel slightly different across devices; adjust `page_distance_cm` to suit your trackpad. Haptics require compatible hardware and may be suppressed by macOS when fingers are no longer touching it.
 
@@ -139,12 +139,12 @@ Basic settings for the menubar display.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `enabled` | Boolean | `true` | Show the Raven menu bar item unless a saved menu/command choice overrides it. Set to `false` to hide the entire item, including its descriptor, workspace indicator, and menu, freeing its menu bar space. Changes apply without restarting. |
+| `enabled` | Boolean | `true` | Show the fih menu bar item unless a saved menu/command choice overrides it. Set to `false` to hide the entire item, including its descriptor, workspace indicator, and menu, freeing its menu bar space. Changes apply without restarting. |
 | `orientation` | String | `'default'` | Which of the menubar elements appears first, the descriptor `'default'` or the indicator `'flipped'`. |
 | `colors` | [String] | `['#FFFFFF']` | An array of hex colors defining a linear gradient (left to right) coloring the menubar display. Set a solid color by including only one element. |
 | `angle` | Float | `90.0` | The angle (in degrees) of the gradient. |
 
-To hide Raven from the menu bar:
+To hide fih from the menu bar:
 
 ```toml
 [decorations.menu]
@@ -159,23 +159,23 @@ paneru.setup {
 }
 ```
 
-You can also click **Hide Menu Bar** in Raven's menu. This choice is saved across restarts and overrides `enabled`. To show the item again:
+You can also click **Hide Menu Bar** in fih's menu. This choice is saved across restarts and overrides `enabled`. To show the item again:
 
 ```sh
-raven showmenu
+fih showmenu
 ```
 
-This command shows the item in the running daemon and remembers the new choice. Lua scripts can use `paneru.showmenu()` and `paneru.hidemenu()`, or bind `showmenu` and `hidemenu` to keys. Choices are stored in `$XDG_STATE_HOME/paneru/menu-bar.json` (normally `~/.local/state/raven/menu-bar.json`); removing this file while Raven is stopped restores the configuration's behavior.
+This command shows the item in the running daemon and remembers the new choice. Lua scripts can use `paneru.showmenu()` and `paneru.hidemenu()`, or bind `showmenu` and `hidemenu` to keys. Choices are stored in `$XDG_STATE_HOME/paneru/menu-bar.json` (normally `~/.local/state/fih/menu-bar.json`); removing this file while fih is stopped restores the configuration's behavior.
 
 The permission setup menu remains visible until the required macOS access is granted.
 
 ### `[decorations.menu.descriptor]`
-Settings for the descriptor component of the menubar display. The descriptor component is a visual marker for the Raven menubar item.
+Settings for the descriptor component of the menubar display. The descriptor component is a visual marker for the fih menubar item.
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `style` | String | `'symbol'` | Composition of the descriptor. Options are any SF Symbol `'symbol'`, any string of text `'text'`, both of those `'both'`, or nothing `'hidden'` |
 | `text` | String | `'VW'` | Text shown if `'text'` or `'both'` style is selected. |
-| `symbol` | String | `'fish.fill'` | SF Symbol shown if `'symbol'` or `'both'` style is selected. SF Symbol names can be found in the [SF Symbols App](https://developer.apple.com/sf-symbols/), in the Xcode library, or in a variety of places online. |
+| `symbol` | String | `'fih'` | The built-in fih mark (`'fih'`) or any SF Symbol, shown if `'symbol'` or `'both'` style is selected. SF Symbol names can be found in the [SF Symbols App](https://developer.apple.com/sf-symbols/), in the Xcode library, or in a variety of places online. |
 
 ### `[decorations.menu.indicator]`
 Settings for the indicator component of the menubar display. The indicator component shows your current (and optionally all active) virtual workspace(s).
@@ -193,7 +193,7 @@ Settings for the indicator component of the menubar display. The indicator compo
 
 ### `[decorations.inactive.dim] (Native macOS Dimming)`
 
-Raven supports native macOS window dimming. To use this mode, **only** set `opacity` (and optionally `opacity_night`). Do not set a `color`.
+fih supports native macOS window dimming. To use this mode, **only** set `opacity` (and optionally `opacity_night`). Do not set a `color`.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -266,10 +266,10 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_raise_floating` | Make the floating windows layer visible on the current workspace. |
 | `window_togglefloatlayer` | Selectively move the floating windows in front or behind of the workspace windows. |
 | `window_copyrule` | Copy a window rule template for the focused window to the clipboard. |
-| `showmenu` | Show the Raven menu bar item and remember the choice across restarts. |
-| `hidemenu` | Hide the entire Raven menu bar item and remember the choice across restarts. |
+| `showmenu` | Show the fih menu bar item and remember the choice across restarts. |
+| `hidemenu` | Hide the entire fih menu bar item and remember the choice across restarts. |
 | `quit` | Exit Paneru. |
-| `restart` | Restart the Raven service (`raven restart`). |
+| `restart` | Restart the fih service (`fih restart`). |
 
 **Example:**
 ```toml
@@ -280,7 +280,7 @@ window_resize = ["alt - r", "ctrl - r"]
 
 ### Virtual workspaces (Experimental)
 
-Raven allows having virtual spaces inside of the native macOS workspace.
+fih allows having virtual spaces inside of the native macOS workspace.
 Logically it can be thought of several strips of windows (rows) stacked on top
 of each other within the single workspace. Similar to how Niri implements the
 movement between the vertical workspaces.
@@ -324,19 +324,19 @@ window_virtualsendnum_3 = "cmd + alt + shift - 3"
 **Example command line:**
 ```shell
 # Move to the previous virtual workspace.
-$ raven send-cmd window virtual north
+$ fih send-cmd window virtual north
 # Move the current window to the next virtual workspace.
-$ raven send-cmd window virtualmove south
+$ fih send-cmd window virtualmove south
 # Move directly to virtual workspace 3.
-$ raven send-cmd window virtualnum 3
+$ fih send-cmd window virtualnum 3
 # Move the current window to virtual workspace 3 and follow it.
-$ raven send-cmd window virtualmovenum 3
+$ fih send-cmd window virtualmovenum 3
 # Send the current window to virtual workspace 3 and stay here.
-$ raven send-cmd window virtualsendnum 3
+$ fih send-cmd window virtualsendnum 3
 ```
 
 See [QUERY_AND_SUBSCRIBE_FORMAT.md](QUERY_AND_SUBSCRIBE_FORMAT.md) for the
-structured `raven query` responses and `raven subscribe` event stream.
+structured `fih query` responses and `fih subscribe` event stream.
 
 ---
 
@@ -352,14 +352,14 @@ accessibility role/subrole.
 | `role` | String | Optional accessibility role to match exactly (e.g., `AXWindow`). A rule with `role` never matches a window that reports none. |
 | `subrole` | String | Optional accessibility subrole to match exactly (e.g., `AXStandardWindow`, `AXDialog`, `AXFloatingWindow`). A rule with `subrole` never matches a window that reports none. |
 | `floating` | Boolean | Force the window to be floating/unmanaged. |
-| `manage` | Boolean | Force Raven to manage this app/window even if macOS reports the app as unobservable or the window has a non-standard role/subrole. |
+| `manage` | Boolean | Force fih to manage this app/window even if macOS reports the app as unobservable or the window has a non-standard role/subrole. |
 | `index` | Integer | Preferred position in the strip when spawned. |
 | `dont_focus` | Boolean | Prevent the window from taking focus when spawned. |
 | `width` | Positive Float or `"complement_focused"` | Initial width ratio for the window. Values above `1.0` create an oversized, horizontally scrollable window. `"complement_focused"` uses `1.0` minus the focused window's width ratio; if there is no focused window or it is at least 95% wide, the new window starts at full width. |
 | `grid` | String | placement for floating windows: `"cols:rows:x:y:w:h"`. |
 | `horizontal_padding` | Integer | Gaps to the left/right of this window. |
 | `vertical_padding` | Integer | Gaps to the top/bottom of this window. |
-| `bindings_passthrough`| Array (String)| Keys that should bypass Raven and go directly to the app. |
+| `bindings_passthrough`| Array (String)| Keys that should bypass fih and go directly to the app. |
 
 For example, use `width = "complement_focused"` in a window rule to give each
 new window the width remaining beside the currently focused window. A new
@@ -376,7 +376,7 @@ bindings_passthrough = ["ctrl-h", "ctrl-l"]
 ```
 
 Windows whose subrole isn't `AXStandardWindow` or `AXFloatingWindow` (e.g.
-`AXDialog`) are ignored by Raven unless a rule with `manage = true` matches
+`AXDialog`) are ignored by fih unless a rule with `manage = true` matches
 them, so a `role`/`subrole` rule for such windows only takes effect for apps that
 are also force-managed.
 
@@ -401,7 +401,7 @@ floating = true
 ### Copying a window rule
 
 Neither the bundle ID nor the exact window title is visible anywhere in the UI,
-so the Raven menu bar has a **Copy Window Rule** entry. You can also trigger it
+so the fih menu bar has a **Copy Window Rule** entry. You can also trigger it
 via a keybinding (e.g., `window_copyrule = "ctrl + alt - c"`) or run it from the
 command line (`paneru window copyrule`). It puts a rule for the currently focused
 window on the clipboard, ready to paste:
@@ -432,7 +432,7 @@ snippet is written as a Lua table instead of TOML.
 
 Some applications (e.g., BetterTouchTool, ProtonVPN) are flagged as background apps
 (`LSUIElement`) or expose windows with unusual accessibility roles such as `AXTable`
-or `AXTextField`. Raven normally ignores these processes and windows. Use `manage = true`
+or `AXTextField`. fih normally ignores these processes and windows. Use `manage = true`
 to opt in and forcibly manage the matching windows.
 
 ```toml
@@ -449,10 +449,10 @@ floating = true
 
 ### Session Restore
 
-Raven saves its managed window layout and can restore it the next time it
-starts. Restore is a startup-only phase: Raven loads the saved session, applies
+fih saves its managed window layout and can restore it the next time it
+starts. Restore is a startup-only phase: fih loads the saved session, applies
 it after initial window discovery, keeps matching open for a short grace period,
-then stops consulting the saved state until the next Raven process start.
+then stops consulting the saved state until the next fih process start.
 
 The saved session includes:
 
@@ -471,7 +471,7 @@ grace period ends, keep normal `[windows]` behavior.
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `enabled` | Boolean | `true` | Enables session restore on startup. |
-| `startup_grace_ms` | Integer (ms) | `2000` | How long Raven keeps restore matching active after startup. This gives apps a chance to create windows shortly after Raven starts. |
+| `startup_grace_ms` | Integer (ms) | `2000` | How long fih keeps restore matching active after startup. This gives apps a chance to create windows shortly after fih starts. |
 | `missing_windows` | String | `"ignore"` | Behavior when a saved window is not present during restore. Currently only `"ignore"` is supported, which drops the missing window and compacts the restored layout. |
 
 **Example:**
@@ -488,7 +488,7 @@ Restore matches windows first by stable startup identity:
 - process id
 - bundle id
 
-If an application has restarted and those ids changed, Raven can use a
+If an application has restarted and those ids changed, fih can use a
 conservative fallback match:
 
 - bundle id
@@ -498,20 +498,20 @@ conservative fallback match:
 - accessibility subrole
 
 Fallback matching is only used when it is unambiguous. If multiple current
-windows could match the same saved window, Raven skips that saved window rather
+windows could match the same saved window, fih skips that saved window rather
 than moving the wrong one.
 
 If a saved app or window is missing, the default `"ignore"` policy simply drops
 it from the restored layout. Empty stacks, tab groups, columns, and virtual rows
 are removed. If the previously selected virtual row is removed because all of
-its windows are missing, Raven selects the nearest remaining restored row for
+its windows are missing, fih selects the nearest remaining restored row for
 that native workspace. If no restored row remains, the normal startup workspace
 selection is kept.
 
-For screens, Raven prefers the current macOS workspace-to-display mapping when
+For screens, fih prefers the current macOS workspace-to-display mapping when
 the workspace is already present on a display. Otherwise it restores to the
 saved display id when that screen is still connected, then falls back to the
-current active display, then the first available display by id. Raven does not
+current active display, then the first available display by id. fih does not
 create placeholder displays or off-screen state for disconnected monitors.
 
 ---
@@ -521,7 +521,7 @@ create placeholder displays or off-screen state for disconnected monitors.
 > [!WARNING]
 > These features rely on undocumented macOS window-server APIs and have known issues. For example, overlay windows (like YouTube Picture-in-Picture) may be partially shaded, and layer ordering can behave unexpectedly. Both features are **disabled by default**. 
 >
-> Disabling **System Integrity Protection (SIP)** is **not required**, but without it Raven has limited control over window layering, which is the root cause of most visual edge-cases. Enable these only if you are comfortable with occasional glitches.
+> Disabling **System Integrity Protection (SIP)** is **not required**, but without it fih has limited control over window layering, which is the root cause of most visual edge-cases. Enable these only if you are comfortable with occasional glitches.
 
 ### Inactive Window Overlay Dimming
 Another dimming option that draws a translucent overlay on every inactive window to visually emphasize the focused one. 
@@ -571,7 +571,7 @@ The border changes color immediately when the macOS appearance changes.
 
 ## 8. Lua Scripting
 
-Raven embeds a Lua runtime that allows full configuration via `init.lua`, replacing `raven.toml` entirely. When a Lua configuration or script exists (`$RAVEN_LUA`, `$HOME/.raven.lua`, or `$XDG_CONFIG_HOME/raven/init.lua`), it takes over completely and no TOML config is read.
+fih embeds a Lua runtime that allows full configuration via `init.lua`, replacing `fih.toml` entirely. When a Lua configuration or script exists (`$FIH_LUA`, `$HOME/.fih.lua`, or `$XDG_CONFIG_HOME/fih/init.lua`), it takes over completely and no TOML config is read.
 
 All options, padding, gesture settings, window rules, and keybindings documented in sections 1–7 above are available under identical names via `paneru.setup{...}`.
 

@@ -166,7 +166,7 @@ impl ScriptStateStore {
 
     #[must_use]
     pub fn default_file_path() -> PathBuf {
-        xdg::BaseDirectories::with_prefix("raven")
+        xdg::BaseDirectories::with_prefix("fih")
             .get_state_file(SCRIPT_STATE_FILE_NAME)
             .expect("XDG state directory should be available")
     }

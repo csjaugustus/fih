@@ -16,7 +16,7 @@ use objc2_app_kit::{
     NSUserInterfaceLayoutOrientation, NSVariableStatusItemLength, NSView,
 };
 use objc2_core_foundation::{CGFloat, CGPoint, CGRect, CGSize};
-use objc2_foundation::{NSArray, NSInteger, NSObject, NSString};
+use objc2_foundation::{NSArray, NSData, NSInteger, NSObject, NSString};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -83,7 +83,7 @@ impl MenuBarVisibility {
 pub struct MenuBarPreferenceFile(PathBuf);
 
 pub fn load_menu_bar_preference(app: &mut bevy::app::App) {
-    if let Some(path) = xdg::BaseDirectories::with_prefix("raven").get_state_file("menu-bar.json") {
+    if let Some(path) = xdg::BaseDirectories::with_prefix("fih").get_state_file("menu-bar.json") {
         app.insert_resource(MenuBarVisibility::load(&path))
             .insert_resource(MenuBarPreferenceFile(path));
     }
@@ -230,6 +230,12 @@ impl MenuActionTarget {
 }
 
 const MENU_BAR_SPACING: CGFloat = 5.0;
+/// The `symbol` that selects the built-in fih mark; any other value names an
+/// SF Symbol.
+pub(crate) const FIH_MARK_SYMBOL: &str = "fih";
+/// The fih mark, black on transparent: drawn as a template image, so only its
+/// alpha matters and `AppKit` tints it for the menu bar.
+const FIH_MARK: &[u8] = include_bytes!("../assets/menubar-icon.png");
 
 pub struct MenuBarManager {
     mtm: MainThreadMarker,
@@ -320,10 +326,10 @@ impl MenuBarManager {
         let pane = permission_pane_name();
         self.menu.removeAllItems();
 
-        let status = self.add_item(&format!("Raven — {pane} Required"), None);
+        let status = self.add_item(&format!("fih — {pane} Required"), None);
         status.setEnabled(false);
 
-        let hint = self.add_item("Grant access; Raven will start automatically", None);
+        let hint = self.add_item("Grant access; fih will start automatically", None);
         hint.setEnabled(false);
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
@@ -341,7 +347,7 @@ impl MenuBarManager {
         );
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
-        self.add_item("Quit Raven", Some(sel!(quitPaneru:)));
+        self.add_item("Quit fih", Some(sel!(quitPaneru:)));
     }
 
     pub fn update(
@@ -399,7 +405,7 @@ impl MenuBarManager {
         self.manage_item = None;
         self.copy_rule_item = None;
 
-        let status = self.add_item("Raven — Running", None);
+        let status = self.add_item("fih — Running", None);
         status.setEnabled(false);
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
 
@@ -423,8 +429,8 @@ impl MenuBarManager {
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
         let hide = self.add_item("Hide Menu Bar", Some(sel!(hideMenuBar:)));
-        hide.setToolTip(Some(&NSString::from_str("Show again with: raven showmenu")));
-        self.add_item("Quit Raven", Some(sel!(quitPaneru:)));
+        hide.setToolTip(Some(&NSString::from_str("Show again with: fih showmenu")));
+        self.add_item("Quit fih", Some(sel!(quitPaneru:)));
         self.configured_widths = widths.to_vec();
         self.current_enablement = None;
         self.selected_widths = None;
@@ -620,7 +626,7 @@ impl MenuBarManager {
         // A button starts out at `NSNoImage`, which draws its (empty) title and
         // nothing else: the item goes blank without this.
         button.setImagePosition(NSCellImagePosition::ImageOnly);
-        button.setToolTip(Some(&NSString::from_str("Raven window manager")));
+        button.setToolTip(Some(&NSString::from_str("fih window manager")));
         self.status_item.setLength(NSVariableStatusItemLength);
         true
     }
@@ -730,10 +736,15 @@ impl MenuBarManager {
 
     fn build_descriptor_symbol(&self, config: &Config) -> Option<Retained<NSImageView>> {
         let symbol = config.menubar_descriptor_symbol();
-        let Some(image) = NSImage::imageWithSystemSymbolName_accessibilityDescription(
-            &NSString::from_str(&symbol),
-            None,
-        ) else {
+        let image = if symbol == FIH_MARK_SYMBOL {
+            NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(FIH_MARK))
+        } else {
+            NSImage::imageWithSystemSymbolName_accessibilityDescription(
+                &NSString::from_str(&symbol),
+                None,
+            )
+        };
+        let Some(image) = image else {
             warn!(%symbol, "unable to load menu bar descriptor symbol");
             return None;
         };

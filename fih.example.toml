@@ -1,0 +1,158 @@
+# fih configuration. Copy to ~/.config/fih/fih.toml.
+#
+# fih reloads this file automatically whenever it changes.
+
+[options]
+# --- Behavior ---
+# Hovering a window focuses it, without clicking.
+focus_follows_mouse = false
+# The pointer jumps to the window you switch to.
+mouse_follows_focus = true
+
+# --- Layout ---
+# Widths (fractions of the screen) cycled by the Resize shortcut.
+preset_column_widths = [0.5, 1]
+# Centre the focused column on focus change.
+auto_center = false
+
+# --- Appearance ---
+# Higher is faster; unset means instant.
+animation_speed = 20
+
+# --- Tabs ---
+disable_native_tabs = false
+
+# 4px to the screen edges; the window rule below adds 4px more, so 8px gaps.
+[padding]
+top = 4
+bottom = 4
+left = 4
+right = 4
+
+# A swipe comes to rest with a window flush left, centred or flush right.
+[swipe]
+snap = true
+# Keep the strip against the screen edges: closing or shrinking a window at
+# either end slides the rest over instead of leaving empty space, and swipes
+# stop at the first and last window.
+continuous = false
+
+[swipe.gesture]
+# 4 fingers, because macOS uses three-finger swipes for Spaces.
+fingers_count = 4
+direction = "Natural"
+
+[swipe.scroll]
+# Hold this and scroll to slide the strip.
+modifier = "ctrl + alt"
+
+# Restore the layout on start.
+[restore]
+enabled = true
+
+# Border around the focused window.
+[decorations.active.border]
+enabled = false
+width = 2.0
+color = "#5AC5C9"
+radius = 10.0
+
+# Shortcut syntax: "mod + mod - key" with mods alt, shift, cmd, ctrl.
+# A value may be one string or a list of strings.
+[bindings]
+# Move focus to the next window.
+window_focus_west = "ctrl + alt - leftarrow"
+window_focus_east = "ctrl + alt - rightarrow"
+window_focus_north = "ctrl + alt - uparrow"
+window_focus_south = "ctrl + alt - downarrow"
+window_focus_first = "ctrl + alt + cmd - leftarrow"
+# alt - 9 jumps to the last window, like a browser's tabs.
+window_focus_last = ["ctrl + alt + cmd - rightarrow", "alt - 9"]
+# Move the focused window: add Shift to the focus keys.
+window_swap_west = "ctrl + alt + shift - leftarrow"
+window_swap_east = "ctrl + alt + shift - rightarrow"
+window_swap_north = "ctrl + alt + shift - uparrow"
+window_swap_south = "ctrl + alt + shift - downarrow"
+window_swap_first = "ctrl + alt + cmd + shift - leftarrow"
+# alt + shift - 9 moves the window to the end, like alt - 9 focuses it.
+window_swap_last = ["ctrl + alt + cmd + shift - rightarrow", "alt + shift - 9"]
+# Center the focused window / cycle preset widths / toggle full width.
+window_center = "ctrl + alt - c"
+window_resize = "ctrl + alt - r"
+window_fullwidth = "ctrl + alt - f"
+# Step width by 5% and height by 10% (window_width_step / window_height_step).
+window_wider = "ctrl + alt - equal"
+window_narrower = "ctrl + alt - minus"
+window_taller = "ctrl + alt + shift - equal"
+window_shorter = "ctrl + alt + shift - minus"
+window_equalize = "ctrl + alt - 0"
+# Float the focused window (take it out of the strip), or tile it again.
+window_manage = "ctrl + alt - t"
+# Stack into the column on the left / move back into its own column.
+window_stack = "ctrl + alt - rightbracket"
+window_unstack = "ctrl + alt + shift - rightbracket"
+# Show the focused column as tabs, one window at a time.
+window_tabbeddisplay = "ctrl + alt + shift - t"
+window_nextdisplay = "ctrl + alt - n"
+# Stop the window manager.
+quit = "ctrl + alt - q"
+# Jump to a window by its place in the strip (alt - 9 = the last, above).
+window_focus_1 = "alt - 1"
+window_focus_2 = "alt - 2"
+window_focus_3 = "alt - 3"
+window_focus_4 = "alt - 4"
+window_focus_5 = "alt - 5"
+window_focus_6 = "alt - 6"
+window_focus_7 = "alt - 7"
+window_focus_8 = "alt - 8"
+# With shift, move the focused window there.
+window_swap_1 = "alt + shift - 1"
+window_swap_2 = "alt + shift - 2"
+window_swap_3 = "alt + shift - 3"
+window_swap_4 = "alt + shift - 4"
+window_swap_5 = "alt + shift - 5"
+window_swap_6 = "alt + shift - 6"
+window_swap_7 = "alt + shift - 7"
+window_swap_8 = "alt + shift - 8"
+# Pin the focused window to the left / right half; press again to unpin.
+window_pin_left = "ctrl + alt - p"
+window_pin_right = "ctrl + alt + shift - p"
+# strip_show = "ctrl + alt - s"
+
+[windows]
+
+# Gap between windows: 4px on every side of
+# every window. Only sets padding, so per-app rules below still apply.
+[windows.all-gaps]
+title = '.*'
+horizontal_padding = 4
+vertical_padding = 4
+
+# name: WeChat windows
+[windows.wechat]
+title = '.*'
+bundle_id = "com.tencent.xinWeChat"
+floating = true
+
+# name: Telegram windows
+[windows.telegram]
+title = '.*'
+bundle_id = "ru.keepcoder.Telegram"
+floating = true
+
+# name: QuickTime Player windows
+[windows.quicktime-player]
+title = '.*'
+bundle_id = "com.apple.QuickTimePlayerX"
+floating = true
+
+# name: System Settings windows
+[windows.system-settings]
+title = '.*'
+bundle_id = "com.apple.systempreferences"
+floating = true
+
+# name: Affinity Publisher 2 windows
+[windows.affinity-publisher-2]
+title = '.*'
+bundle_id = "com.seriflabs.affinitypublisher2"
