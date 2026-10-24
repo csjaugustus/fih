@@ -937,27 +937,16 @@ fn occupied_indices(current: u32, workspaces: &[WorkspaceSummary]) -> Vec<u32> {
     indices
 }
 
-/// The apps of a workspace as a menu reads them: in order, with repeats
-/// folded into a count ("Ghostty ×2 · Safari").
+/// The apps of a workspace as a menu reads them: each once, in strip order
+/// ("Ghostty · Safari").
 fn apps_label(apps: &[String]) -> String {
-    let mut counted: Vec<(&str, usize)> = Vec::new();
+    let mut unique: Vec<&str> = Vec::new();
     for app in apps {
-        match counted.iter_mut().find(|(name, _)| name == app) {
-            Some((_, count)) => *count += 1,
-            None => counted.push((app, 1)),
+        if !unique.contains(&app.as_str()) {
+            unique.push(app);
         }
     }
-    counted
-        .into_iter()
-        .map(|(name, count)| {
-            if count > 1 {
-                format!("{name} ×{count}")
-            } else {
-                name.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" · ")
+    unique.join(" · ")
 }
 
 pub(crate) fn virtual_workspace_label(virtual_index: u32) -> String {
@@ -1289,9 +1278,9 @@ mod tests {
     }
 
     #[test]
-    fn app_list_folds_repeats_into_a_count() {
+    fn app_list_names_each_app_once() {
         let apps = ["Ghostty", "Edge", "Ghostty", "Finder", "Finder"].map(String::from);
-        assert_eq!(super::apps_label(&apps), "Ghostty ×2 · Edge · Finder ×2");
+        assert_eq!(super::apps_label(&apps), "Ghostty · Edge · Finder");
         assert_eq!(super::apps_label(&[]), "");
     }
 
