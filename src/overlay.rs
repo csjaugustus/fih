@@ -11,7 +11,7 @@ use objc2_foundation::{
     NSAttributedString, NSDictionary, NSMutableCopying, NSPoint, NSRect, NSSize, NSString,
 };
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BorderParams {
     pub color: (f64, f64, f64),
     pub opacity: f64,
@@ -28,6 +28,9 @@ pub struct DimParams {
     /// `None` means dim everything (no focused window).
     pub cutout: Option<NSRect>,
     pub border: Option<BorderParams>,
+    /// A second ring, around the pinned window (in the view's local
+    /// coordinates), when that is not the focused one.
+    pub pinned: Option<(NSRect, BorderParams)>,
 }
 
 // ── DimView: fullscreen dark overlay with a transparent cutout + border ──
@@ -52,6 +55,7 @@ struct DimViewIvars {
     border_opacity: f64,
     border_width: f64,
     border_radius: f64,
+    pinned: Option<(NSRect, BorderParams)>,
 }
 
 define_class!(
@@ -123,6 +127,22 @@ define_class!(
                     path.stroke();
                 }
             }
+
+            // The pinned window's ring, centred on its edge like the border.
+            if let Some((rect, border)) = &ivars.pinned {
+                let radius = border.radius as CGFloat;
+                let path =
+                    NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(*rect, radius, radius);
+                path.setLineWidth(border.width as CGFloat);
+                NSColor::colorWithSRGBRed_green_blue_alpha(
+                    border.color.0 as CGFloat,
+                    border.color.1 as CGFloat,
+                    border.color.2 as CGFloat,
+                    border.opacity as CGFloat,
+                )
+                .setStroke();
+                path.stroke();
+            }
         }
 
         #[unsafe(method(isFlipped))]
@@ -163,6 +183,7 @@ impl DimView {
             border_opacity: bo,
             border_width: bw,
             border_radius: brad,
+            pinned: params.pinned.clone(),
         });
         unsafe { msg_send![super(this), initWithFrame: frame] }
     }
@@ -265,12 +286,15 @@ impl OverlayManager {
         dim_color: (f64, f64, f64),
         focused_abs_cg: Option<NSRect>,
         border: Option<&BorderParams>,
+        pinned_abs_cg: Option<(NSRect, &BorderParams)>,
     ) {
         let screen_h = primary_screen_height(self.mtm);
         let screens = NSScreen::screens(self.mtm);
 
         // The focused window in Cocoa global coords (shared across all screens).
         let focused_cocoa = focused_abs_cg.map(|cg| cg_abs_to_cocoa(cg, screen_h));
+        let pinned_cocoa =
+            pinned_abs_cg.map(|(cg, border)| (cg_abs_to_cocoa(cg, screen_h), border));
 
         // A display was added/removed — tear down and rebuild from scratch.
         if self.overlays.len() != screens.len() {
@@ -297,11 +321,28 @@ impl OverlayManager {
                     )
                 });
 
+            let pinned_local = pinned_cocoa
+                .filter(|(wc, _)| rects_intersect(*wc, frame))
+                .map(|(wc, border)| {
+                    (
+                        NSRect::new(
+                            NSPoint::new(
+                                wc.origin.x - frame.origin.x,
+                                (frame.origin.y + frame.size.height)
+                                    - (wc.origin.y + wc.size.height),
+                            ),
+                            wc.size,
+                        ),
+                        border.clone(),
+                    )
+                });
+
             let params = DimParams {
                 opacity: dim_opacity,
                 color: dim_color,
                 cutout: cutout_local,
                 border: border.cloned(),
+                pinned: pinned_local,
             };
 
             if let Some((window, stored)) = self.overlays.get_mut(i) {

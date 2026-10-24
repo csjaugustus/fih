@@ -583,7 +583,7 @@ color = "#000000"
 ```
 
 ### Active Window Border
-Draws a colored border around the currently focused window. A floating window never gets one, nor does a window that fills the screen (native fullscreen, `window_fullwidth`, toggled to full width, or alone on its workspace).
+Draws a colored border around the currently focused window, and a matching orange one around a pinned window. A floating window never gets one, nor does a window that fills the screen (native fullscreen, `window_fullwidth`, toggled to full width, or alone on its workspace).
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
