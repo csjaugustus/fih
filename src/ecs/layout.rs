@@ -13,6 +13,7 @@ use stdext::function_name;
 use tracing::{Level, instrument, trace};
 
 use crate::config::Config;
+use crate::ecs::columns::ColumnChoices;
 use crate::ecs::params::Windows;
 use crate::ecs::workspace::{PreviousStripPosition, SnapStripMarker};
 use crate::ecs::{
@@ -199,9 +200,6 @@ impl Plugin for LayoutEventsPlugin {
     }
 }
 
-/// Share of the display a pinned window takes; the strip scrolls in the rest.
-const PIN_WIDTH_RATIO: f64 = 0.5;
-
 /// Strips whose pin, or whose turn on screen, may have changed.
 type PinChangedStrips<'w, 's> =
     Query<'w, 's, (), Or<(Changed<LayoutStrip>, Added<ActiveWorkspaceMarker>)>>;
@@ -224,8 +222,10 @@ type PinSyncStrips<'w, 's> = Query<
 fn pinned_viewport_may_change(
     strips: PinChangedStrips,
     displays: Query<(), Changed<Display>>,
+    choices: Res<ColumnChoices>,
+    config: Res<Config>,
 ) -> bool {
-    !strips.is_empty() || !displays.is_empty()
+    !strips.is_empty() || !displays.is_empty() || choices.is_changed() || config.is_changed()
 }
 
 /// The width of a left pin slice; a right one does not move where strips start.
@@ -237,7 +237,8 @@ fn left_inset(inset: Option<(bool, i32)>) -> i32 {
 }
 
 /// Keeps each display's reserved pin slice in step with its active strip: a
-/// pinned window gets [`PIN_WIDTH_RATIO`] of the display at its edge, and the
+/// pinned window gets one of the workspace's columns at its edge (half the
+/// display with 2 columns, a third with 3), and the
 /// strip's viewport shrinks by as much. When the slice changes, columns too
 /// wide for the new viewport are narrowed (and remembered, so unpinning gives
 /// their width back) and the strip is re-clamped into place.
@@ -253,6 +254,7 @@ fn sync_pinned_viewport(
     mut displays: Query<(&mut Display, Option<&DockPosition>)>,
     shrunk: Query<&ShrunkForPin>,
     windows: Windows,
+    choices: Res<ColumnChoices>,
     config: Res<Config>,
     mut commands: Commands,
 ) {
@@ -276,7 +278,8 @@ fn sync_pinned_viewport(
             continue;
         };
         let edge = display.edge_bounds(dock, &config);
-        let pin_width = round_px(f64::from(edge.width()) * PIN_WIDTH_RATIO);
+        let columns = choices.count(strip, &display.screen(), &config);
+        let pin_width = round_px(f64::from(edge.width()) / f64::from(columns.max(1)));
         let wanted = strip.pinned().map(|pin| (pin.east, pin_width));
         let basis = basis.map_or_else(|| left_inset(display.pin_inset()), |basis| basis.0);
 

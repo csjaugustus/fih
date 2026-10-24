@@ -325,3 +325,39 @@ fn scrolling_beside_a_right_pin_never_enters_the_pinned_slice() {
         "the pin never moved"
     );
 }
+
+/// A pinned window takes one of the workspace's columns: a third with three.
+#[test]
+fn a_pinned_window_takes_one_column() {
+    let mut harness = TestHarness::new().with_windows(3);
+    harness.advance(std::time::Duration::from_millis(100));
+    let command = |harness: &mut TestHarness, operation| {
+        harness
+            .app
+            .world_mut()
+            .write_message::<Event>(Event::Command {
+                command: Command::Window(operation),
+            });
+        harness.advance(std::time::Duration::from_millis(500));
+    };
+    let pinned_width = |harness: &mut TestHarness| {
+        let world = harness.world();
+        let mut strips = world.query::<&LayoutStrip>();
+        let pin = strips
+            .iter(world)
+            .find_map(|strip| strip.pinned())
+            .expect("a pinned window");
+        world
+            .get::<crate::manager::Window>(pin.entity)
+            .expect("the pinned window")
+            .frame()
+            .width()
+    };
+
+    command(&mut harness, Operation::SetColumns(3));
+    command(&mut harness, Operation::Pin(Direction::West));
+    assert_eq!(pinned_width(&mut harness), TEST_DISPLAY_WIDTH / 3);
+
+    command(&mut harness, Operation::SetColumns(2));
+    assert_eq!(pinned_width(&mut harness), TEST_DISPLAY_WIDTH / 2);
+}

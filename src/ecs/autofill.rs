@@ -166,7 +166,12 @@ pub(crate) fn auto_fill_widths(
             choices.count(&strip, &display.screen(), &config),
             edge_width,
             viewport_width,
-            others.iter().map(|column| column.width).sum(),
+            // A pinned window takes its slice of the screen too.
+            others.iter().map(|column| column.width).sum::<i32>()
+                + strip
+                    .pinned()
+                    .and_then(|pin| windows.moving_frame(pin.entity))
+                    .map_or(0, |frame| frame.width()),
         );
         for (entity, width) in plan_auto_fill(&fill_columns, target) {
             let Some(frame) = windows.frame(entity) else {
