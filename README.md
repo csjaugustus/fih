@@ -35,7 +35,9 @@ One window, fih make it fill screen. Open second, both take half. Fih no make yo
 
 Move, little map show at bottom. One icon per window. Teal = where you are. Faded = off screen. Lock = pinned. Number at left = which workspace.
 
-Go up or down, map grow tall: every strip stack in map, one row each, yours glow teal. You see whole tower at once, then map fade away. Click icon in map, fih take you there.
+Switch workspace with ⌃⌥ ↑ ↓, map show all workspace that have window. One row per workspace, 1 on top. Row you on now get teal box. Other row faded.
+
+Click icon in map, fih go to that window.
 
 ## Get
 
