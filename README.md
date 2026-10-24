@@ -7,7 +7,7 @@
 
 # why many monitor when one do trick
 
-**fih put all window in one long strip. Slide strip. Window come, quick like fih. No second monitor. No third. Max focus.**
+**fih put all window in one long strip. Slide strip. Window come fast like fih, no lag. No second monitor. No third. Max focus.**
 
 </div>
 
@@ -47,9 +47,11 @@ Ready app go in [Releases](https://github.com/csjaugustus/fih/releases).
 
 Fih live in menu bar now. Start by itself at login. New version? Replace app, open again.
 
+Or brew: `brew install csjaugustus/fih/fih`, then `fih install && fih start`. Mac ask for Accessibility, say yes. New version? `brew upgrade fih && fih restart`.
+
 How delete: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to Bin.
 
-### If you nerd
+### If you nerd want tinker
 
 ```sh
 git clone https://github.com/csjaugustus/fih.git
@@ -82,6 +84,12 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 Can whitelist app to float, not go in strip. E.g. Telegram.
 
 Want change any control or setting? Open config file. Not know how change? Ask AI.
+
+## Why name fih
+
+One time go oceanarium. See fih swim. Fih fast. Fih bendy. Fih no get distracted. Fih know where going.
+
+So app tile like fih: fast, smooth, no animation lag. Default zero animation. Window just there.
 
 ## Where from
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Builds dist/fih.app and dist/fih-<version>.dmg. With --publish, also uploads
-# the DMG to a GitHub release tagged v<version>.
+# Builds dist/fih.app, dist/fih-<version>.dmg and the signed binary on its own
+# for Homebrew. With --publish, also uploads both to a GitHub release tagged
+# v<version> and points the Homebrew formula in <owner>/homebrew-fih at it.
 #
 # The app is signed with the local Apple Development certificate but not
 # notarized (that needs the paid developer program), so on first open macOS
@@ -31,6 +32,7 @@ tag="v$version"
 dist="$repo/dist"
 app="$dist/fih.app"
 dmg="$dist/fih-$version.dmg"
+tarball="$dist/fih-$version-macos-arm64.tar.gz"
 
 identity="${FIH_SIGN_IDENTITY:-$(security find-identity -v -p codesigning |
     awk -F'"' '/Apple Development/ { print $2; exit }')}"
@@ -145,9 +147,14 @@ hdiutil create -quiet -volname "fih $version" -srcfolder "$staging" -ov -format 
 rm -rf "$staging"
 codesign --force --sign "$identity" "$dmg"
 
+echo "==> packaging $tarball"
+# The binary Homebrew installs, signed like the app's, so the Accessibility
+# grant survives `brew upgrade` too.
+tar -czf "$tarball" -C "$app/Contents/MacOS" fih
+
 if $publish; then
     echo "==> publishing $tag to $gh_repo"
-    gh release create "$tag" "$dmg" --repo "$gh_repo" --target "$(git rev-parse HEAD)" \
+    gh release create "$tag" "$dmg" "$tarball" --repo "$gh_repo" --target "$(git rev-parse HEAD)" \
         --title "fih $version" --notes-file - <<'EOF'
 ## Install
 
@@ -158,7 +165,19 @@ if $publish; then
 fih then lives in the menu bar and starts at login. To update, replace the app and open it again.
 
 To remove it: run `/Applications/fih.app/Contents/MacOS/fih uninstall`, then move the app to the Bin.
+
+Or with Homebrew: `brew install csjaugustus/fih/fih`.
 EOF
+
+    echo "==> updating the Homebrew formula"
+    tap="$dist/tap"
+    git clone --quiet "git@github.com:${gh_repo%%/*}/homebrew-fih.git" "$tap"
+    sha="$(shasum -a 256 "$tarball" | cut -d ' ' -f 1)"
+    url="https://github.com/$gh_repo/releases/download/$tag/$(basename "$tarball")"
+    sed -i '' -E "s#^  url \".*\"#  url \"$url\"#; s#^  sha256 \".*\"#  sha256 \"$sha\"#" "$tap/Formula/fih.rb"
+    git -C "$tap" commit --quiet -am "fih $version"
+    git -C "$tap" push --quiet
+    rm -rf "$tap"
 fi
 
 echo "==> done: $dmg"

@@ -19,8 +19,9 @@ auto_fill_width = true
 auto_center = false
 
 # --- Appearance ---
-# Higher is faster; unset means instant.
-animation_speed = 20
+# Unset means instant: windows just snap, no lag. Set it (8-20 is fluid,
+# higher is faster) for a slide.
+# animation_speed = 20
 
 # --- Tabs ---
 disable_native_tabs = false
