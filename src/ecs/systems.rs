@@ -1090,12 +1090,8 @@ pub(super) fn update_overlays(
         };
 
         Some(BorderParams {
-            // A pinned window's border is orange, focused or not.
-            color: if pinned == Some(entity) {
-                PINNED_BORDER_COLOR
-            } else {
-                config.border_color(theme.is_some_and(|theme| theme.is_dark))
-            },
+            // Focus outranks the pinned ring: a focused pinned window is teal.
+            color: config.border_color(theme.is_some_and(|theme| theme.is_dark)),
             opacity: config.border_opacity(),
             width: config.border_width(),
             radius: window_config_cache
