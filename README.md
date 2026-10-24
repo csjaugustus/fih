@@ -5,6 +5,8 @@
   <img src="images/fih-horizontal-black.svg" alt="fih" width="360">
 </picture>
 
+speedmaxxed sliding, tiling window manager for macos, optimized for single monitor use
+
 # why many monitor when one do trick
 
 **fih put all window in one long strip. Slide strip. Window come fast like fih, no lag. No second monitor. No third. Max focus.**
