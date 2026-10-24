@@ -1291,3 +1291,44 @@ fn reset_widths_sets_every_column_to_half_the_display() {
         );
     }
 }
+
+#[test]
+fn three_columns_make_resize_and_reset_use_thirds() {
+    let mut harness = TestHarness::new().with_windows(3);
+    harness.advance(Duration::from_millis(100));
+    let command = |harness: &mut TestHarness, operation| {
+        harness
+            .app
+            .world_mut()
+            .write_message::<Event>(Event::Command {
+                command: Command::Window(operation),
+            });
+        harness.advance(Duration::from_millis(500));
+    };
+
+    command(&mut harness, Operation::SetColumns(3));
+    command(&mut harness, Operation::ResetWidths);
+    for window_id in 0..3 {
+        assert_eq!(
+            auto_fill_window_width(harness.world(), window_id),
+            TEST_DISPLAY_WIDTH / 3,
+            "window {window_id} should be a third of the display"
+        );
+    }
+
+    // Resize toggles between a column and the full width, nothing between.
+    let focused = |harness: &mut TestHarness| {
+        let world = harness.world();
+        let mut query =
+            world.query_filtered::<&crate::manager::Window, With<crate::ecs::FocusedMarker>>();
+        query
+            .single(world)
+            .expect("a focused window")
+            .frame()
+            .width()
+    };
+    command(&mut harness, Operation::Resize(ResizeDirection::Grow));
+    assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH);
+    command(&mut harness, Operation::Resize(ResizeDirection::Grow));
+    assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH / 3);
+}

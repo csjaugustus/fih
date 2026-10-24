@@ -510,6 +510,9 @@ impl Iterator for ColumnWindowIter<'_> {
     }
 }
 
+/// Columns a workspace is laid out in until one is chosen.
+pub const DEFAULT_COLUMN_COUNT: u8 = 2;
+
 /// `LayoutStrip` manages a horizontal strip of `Panel`s, where each panel can contain a single window or a stack of windows.
 /// It provides methods for manipulating the arrangement and access to windows within the pane.
 #[derive(Component, Debug, Default)]
@@ -530,6 +533,10 @@ pub struct LayoutStrip {
     /// it. It stays a member of the strip (so it hides and shows with its
     /// workspace) but owns no column, so column operations never move it.
     pinned: Option<Pin>,
+    /// How many columns of the screen width the workspace is laid out in:
+    /// 2 makes the half / full widths, 3 the third / full ones. `None` until
+    /// chosen, which reads as 2.
+    column_count: Option<u8>,
 }
 
 /// The window pinned to an edge of a [`LayoutStrip`], and where it came from.
@@ -550,6 +557,7 @@ impl LayoutStrip {
             columns: VecDeque::new(),
             tabbed_stacks: EntityHashSet::default(),
             pinned: None,
+            column_count: None,
         }
     }
 
@@ -562,6 +570,7 @@ impl LayoutStrip {
             columns,
             tabbed_stacks: EntityHashSet::default(),
             pinned: None,
+            column_count: None,
         }
     }
 
@@ -597,6 +606,26 @@ impl LayoutStrip {
                 Column::Stack(stack) => stack.iter().any(|item| item.contains(entity)),
                 Column::Tabs(stack) => stack.contains(&entity),
             })
+    }
+
+    /// How many columns of the screen width the workspace is laid out in.
+    pub fn column_count(&self) -> u8 {
+        self.column_count.unwrap_or(DEFAULT_COLUMN_COUNT)
+    }
+
+    /// The column count chosen for the workspace, if one has been.
+    pub fn chosen_column_count(&self) -> Option<u8> {
+        self.column_count
+    }
+
+    /// Lays the workspace out in `count` columns of the screen width.
+    pub fn set_column_count(&mut self, count: u8) {
+        self.column_count = Some(count.max(1));
+    }
+
+    /// The width of one column, as a fraction of the screen width.
+    pub fn column_ratio(&self) -> f64 {
+        1.0 / f64::from(self.column_count())
     }
 
     /// The window pinned to an edge, if any.

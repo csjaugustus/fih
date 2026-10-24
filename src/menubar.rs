@@ -11,7 +11,7 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSBezierPath, NSBitmapImageRep, NSCellImagePosition, NSColor, NSCompositingOperation,
-    NSControlStateValueOff, NSControlStateValueOn, NSDeviceRGBColorSpace, NSFont,
+    NSControlStateValueOff, NSControlStateValueOn, NSDeviceRGBColorSpace, NSEvent, NSFont,
     NSFontWeightSemibold, NSGradient, NSGraphicsContext, NSImage, NSImageScaling, NSImageView,
     NSLayoutAttribute, NSMenu, NSMenuItem, NSScreen, NSStackView, NSStatusBar, NSStatusItem,
     NSTextField, NSUserInterfaceLayoutOrientation, NSVariableStatusItemLength, NSView,
@@ -241,6 +241,171 @@ impl MenuActionTarget {
     }
 }
 
+/// The column counts the menu offers.
+const COLUMN_CHOICES: [u8; 2] = [2, 3];
+const PICKER_WIDTH: CGFloat = 220.0;
+const PICKER_HEIGHT: CGFloat = 66.0;
+const PICKER_CELL_WIDTH: CGFloat = 90.0;
+const PICKER_DIAGRAM: CGSize = CGSize {
+    width: 40.0,
+    height: 22.0,
+};
+
+struct ColumnPickerIvars {
+    selected: u8,
+    events: EventSender,
+}
+
+define_class!(
+    /// The menu's column choice: one cell per count, side by side, each a
+    /// small drawing of the screen split into that many columns.
+    #[unsafe(super(NSView))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "FihColumnPicker"]
+    #[ivars = ColumnPickerIvars]
+    struct ColumnPicker;
+
+    impl ColumnPicker {
+        #[unsafe(method(drawRect:))]
+        fn draw_rect(&self, _dirty_rect: CGRect) {
+            let ivars = self.ivars();
+            for (cell, count) in self.cells() {
+                let selected = count == ivars.selected;
+                if selected {
+                    NSColor::controlAccentColor().colorWithAlphaComponent(0.18).setFill();
+                    NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(cell, 8.0, 8.0).fill();
+                }
+                let ink = if selected {
+                    NSColor::controlAccentColor()
+                } else {
+                    NSColor::secondaryLabelColor()
+                };
+
+                // The screen, split into `count` columns.
+                let diagram = CGRect::new(
+                    CGPoint::new(
+                        cell.origin.x + (cell.size.width - PICKER_DIAGRAM.width) / 2.0,
+                        cell.origin.y + cell.size.height - PICKER_DIAGRAM.height - 8.0,
+                    ),
+                    PICKER_DIAGRAM,
+                );
+                ink.setStroke();
+                let frame = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(diagram, 3.0, 3.0);
+                frame.setLineWidth(1.2);
+                frame.stroke();
+                let inner = 3.0;
+                let gap = 2.0;
+                let bar_width = (diagram.size.width - 2.0 * inner - gap * f64::from(count - 1))
+                    / f64::from(count);
+                ink.setFill();
+                for index in 0..count {
+                    let bar = CGRect::new(
+                        CGPoint::new(
+                            diagram.origin.x + inner + f64::from(index) * (bar_width + gap),
+                            diagram.origin.y + inner,
+                        ),
+                        CGSize::new(bar_width, diagram.size.height - 2.0 * inner),
+                    );
+                    NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(bar, 1.5, 1.5).fill();
+                }
+
+                let label = column_label(count, &NSColor::labelColor());
+                let text: CGSize = unsafe { msg_send![&label, size] };
+                let origin = CGPoint::new(
+                    cell.origin.x + (cell.size.width - text.width) / 2.0,
+                    cell.origin.y + 7.0,
+                );
+                let _: () = unsafe { msg_send![&label, drawAtPoint: origin] };
+            }
+        }
+
+        #[unsafe(method(acceptsFirstMouse:))]
+        fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool {
+            true
+        }
+
+        #[unsafe(method(mouseUp:))]
+        fn mouse_up(&self, event: &NSEvent) {
+            let point = self.convertPoint_fromView(event.locationInWindow(), None);
+            let Some(count) = self
+                .cells()
+                .find(|(cell, _)| {
+                    point.x >= cell.origin.x
+                        && point.x <= cell.origin.x + cell.size.width
+                        && point.y >= cell.origin.y
+                        && point.y <= cell.origin.y + cell.size.height
+                })
+                .map(|(_, count)| count)
+            else {
+                return;
+            };
+            let command = Command::Window(Operation::SetColumns(count));
+            if let Err(error) = self.ivars().events.send(Event::Command { command }) {
+                warn!(%error, "unable to send menu bar command");
+            }
+            // Close the menu, as choosing an ordinary item would.
+            if let Some(menu) = self
+                .enclosingMenuItem()
+                .and_then(|item| unsafe { item.menu() })
+            {
+                menu.cancelTracking();
+            }
+        }
+    }
+);
+
+impl ColumnPicker {
+    fn new(mtm: MainThreadMarker, selected: u8, events: EventSender) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(ColumnPickerIvars { selected, events });
+        unsafe {
+            msg_send![
+                super(this),
+                initWithFrame: CGRect::new(CGPoint::ZERO, CGSize::new(PICKER_WIDTH, PICKER_HEIGHT))
+            ]
+        }
+    }
+
+    /// Each choice's cell, centred side by side, with its column count.
+    fn cells(&self) -> impl Iterator<Item = (CGRect, u8)> {
+        let bounds = self.bounds();
+        #[allow(clippy::cast_precision_loss)]
+        let total = PICKER_CELL_WIDTH * COLUMN_CHOICES.len() as f64;
+        let left = bounds.origin.x + (bounds.size.width - total) / 2.0;
+        COLUMN_CHOICES
+            .into_iter()
+            .enumerate()
+            .map(move |(index, count)| {
+                #[allow(clippy::cast_precision_loss)]
+                let x = left + index as f64 * PICKER_CELL_WIDTH;
+                (
+                    CGRect::new(
+                        CGPoint::new(x + 4.0, bounds.origin.y + 4.0),
+                        CGSize::new(PICKER_CELL_WIDTH - 8.0, bounds.size.height - 8.0),
+                    ),
+                    count,
+                )
+            })
+    }
+}
+
+/// "2 Columns", "3 Columns", in the menu's font.
+fn column_label(count: u8, color: &NSColor) -> Retained<NSAttributedString> {
+    let font = NSFont::menuFontOfSize(12.0);
+    let keys = [
+        &*NSString::from_str("NSFont"),
+        &*NSString::from_str("NSColor"),
+    ];
+    let objects = [&*font as &AnyObject, color as &AnyObject];
+    let attributes = NSDictionary::from_slices(&keys, &objects);
+    unsafe {
+        msg_send![
+            NSAttributedString::alloc(),
+            initWithString: &*NSString::from_str(&format!("{count} Columns")),
+            attributes: &*attributes
+        ]
+    }
+}
+
 const MENU_BAR_SPACING: CGFloat = 5.0;
 /// Height of the descriptor mark or SF Symbol in the menu bar.
 const DESCRIPTOR_SYMBOL_HEIGHT: CGFloat = 13.0;
@@ -357,7 +522,7 @@ pub struct MenuBarManager {
     menu: Retained<NSMenu>,
     action_target: Retained<MenuActionTarget>,
     /// The workspaces the menu was last built for, with the active one.
-    menu_workspaces: Option<(u32, Vec<WorkspaceSummary>)>,
+    menu_workspaces: Option<(u32, Vec<WorkspaceSummary>, u8)>,
     current_content: Option<MenuBarContent>,
     visible: bool,
 }
@@ -444,13 +609,21 @@ impl MenuBarManager {
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));
     }
 
-    pub fn update(&mut self, virtual_index: u32, workspaces: &[WorkspaceSummary], config: &Config) {
+    pub fn update(
+        &mut self,
+        virtual_index: u32,
+        workspaces: &[WorkspaceSummary],
+        columns: u8,
+        config: &Config,
+    ) {
         if self
             .menu_workspaces
             .as_ref()
-            .is_none_or(|(index, shown)| *index != virtual_index || shown != workspaces)
+            .is_none_or(|(index, shown, shown_columns)| {
+                *index != virtual_index || shown != workspaces || *shown_columns != columns
+            })
         {
-            self.rebuild_menu(virtual_index, workspaces);
+            self.rebuild_menu(virtual_index, workspaces, columns);
         }
 
         let current = config.workspace_menu_status().then_some(virtual_index);
@@ -467,7 +640,7 @@ impl MenuBarManager {
         self.show_workspaces(config, current, &all);
     }
 
-    fn rebuild_menu(&mut self, virtual_index: u32, workspaces: &[WorkspaceSummary]) {
+    fn rebuild_menu(&mut self, virtual_index: u32, workspaces: &[WorkspaceSummary], columns: u8) {
         self.menu.removeAllItems();
 
         let status = self.add_item("fih — Running", None);
@@ -501,11 +674,21 @@ impl MenuBarManager {
         if let Some(path) = config_file() {
             open_config.setToolTip(Some(&NSString::from_str(&path.display().to_string())));
         }
-        self.add_item("Reset 50% Widths", Some(sel!(resetWidths:)));
+
+        // The current workspace's columns, and resetting its windows to one.
+        self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
+        let picker = NSMenuItem::new(self.mtm);
+        picker.setView(Some(&ColumnPicker::new(
+            self.mtm,
+            columns,
+            self.action_target.ivars().events.clone(),
+        )));
+        self.menu.addItem(&picker);
+        self.add_item("Reset Widths", Some(sel!(resetWidths:)));
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));
-        self.menu_workspaces = Some((virtual_index, workspaces.to_vec()));
+        self.menu_workspaces = Some((virtual_index, workspaces.to_vec(), columns));
     }
 
     fn add_item(&self, title: &str, action: Option<objc2::runtime::Sel>) -> Retained<NSMenuItem> {
@@ -936,7 +1119,12 @@ pub fn update_menu_bar(
     summaries.sort_by_key(|summary| summary.virtual_index);
     summaries.dedup_by_key(|summary| summary.virtual_index);
 
-    menu_bar.update(strip.virtual_index, &summaries, &config);
+    menu_bar.update(
+        strip.virtual_index,
+        &summaries,
+        strip.column_count(),
+        &config,
+    );
 }
 
 /// The workspaces the `occupied` indicator shows: the active one, and every

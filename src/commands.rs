@@ -119,7 +119,7 @@ pub fn register_commands(app: &mut bevy::app::App) {
             full_width_window,
             to_next_display,
             equalize_column,
-            (balance_strip, reset_strip_widths),
+            (balance_strip, reset_strip_widths, set_strip_columns),
             manage_window,
             stack_windows_handler,
             command_move_focus,
@@ -910,7 +910,12 @@ fn resize_window(
         .width();
     let pinned = active_display.display().pin_inset().is_some();
     let current_ratio = f64::from(frame.width()) / f64::from(display_width);
-    let widths = config.preset_column_widths();
+    // A workspace laid out in columns keeps to them: one column wide, or the
+    // full width. Until a column count is chosen, the configured presets.
+    let widths = match active_display.active_strip().chosen_column_count() {
+        Some(count) => vec![1.0 / f64::from(count), 1.0],
+        None => config.preset_column_widths(),
+    };
     let fallback = *widths.first().unwrap_or(&0.5);
     let cycle = config.window_resize_cycle();
     let next_ratio = match operation {
@@ -1525,8 +1530,23 @@ fn balance_strip(
     commands.reshuffle_around(focused_entity);
 }
 
-/// Sets every column in the active strip to half the display width, the way
-/// the menu's "Reset 50% Widths" asks for.
+/// Lays the active workspace out in the chosen number of columns. Nothing
+/// resizes yet: the resize and reset widths commands keep to it from here.
+fn set_strip_columns(mut messages: MessageReader<Event>, mut active_display: ActiveDisplayMut) {
+    let Some(&count) =
+        filter_window_operations(&mut messages, |op| matches!(op, Operation::SetColumns(_)))
+            .find_map(|op| match op {
+                Operation::SetColumns(count) => Some(count),
+                _ => None,
+            })
+    else {
+        return;
+    };
+    active_display.active_strip().set_column_count(count);
+}
+
+/// Sets every column in the active strip to one column of its layout, the
+/// way the menu's "Reset Widths" asks for.
 fn reset_strip_widths(
     mut messages: MessageReader<Event>,
     windows: Windows,
@@ -1548,9 +1568,10 @@ fn reset_strip_widths(
         .edge_bounds(active_display.dock(), &config)
         .width();
     let viewport_width = active_display.actual_bounds(&config).width();
-    let half_width = round_px(f64::from(display_width) * 0.5).min(viewport_width);
-
     let strip = active_display.active_strip();
+    let column_width =
+        round_px(f64::from(display_width) * strip.column_ratio()).min(viewport_width);
+
     let mut anchor = None;
     for column in strip.columns() {
         if matches!(column, Column::Fullscren(_)) {
@@ -1563,7 +1584,7 @@ fn reset_strip_widths(
                 cmds.try_remove::<FullWidthMarker>();
             }
             if let Some(size) = windows.size(entity) {
-                commands.resize_entity(entity, size.with_x(half_width));
+                commands.resize_entity(entity, size.with_x(column_width));
                 anchor.get_or_insert(entity);
             }
         }

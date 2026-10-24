@@ -101,6 +101,14 @@ fn parse_operation(argv: &[&str]) -> Result<Operation> {
         "equalize" => Operation::Equalize,
         "balance" => Operation::Balance,
         "resetwidths" => Operation::ResetWidths,
+        // `window_columns_2`, `window_columns_3`.
+        "columns" => Operation::SetColumns(
+            argument()?
+                .parse::<u8>()
+                .ok()
+                .filter(|count| (1..=6).contains(count))
+                .ok_or_else(err)?,
+        ),
         "stack" => Operation::Stack(true),
         "unstack" => Operation::Stack(false),
         "tabbeddisplay" => Operation::ToggleTabbedDisplay,
@@ -219,6 +227,7 @@ impl Operation {
             Operation::Equalize => owned(&["equalize"]),
             Operation::Balance => owned(&["balance"]),
             Operation::ResetWidths => owned(&["resetwidths"]),
+            Operation::SetColumns(count) => vec!["columns".to_string(), count.to_string()],
             Operation::Manage => owned(&["manage"]),
             Operation::Stack(true) => owned(&["stack"]),
             Operation::Stack(false) => owned(&["unstack"]),
@@ -289,6 +298,7 @@ mod tests {
             Operation::Equalize,
             Operation::Balance,
             Operation::ResetWidths,
+            Operation::SetColumns(3),
             Operation::Manage,
             Operation::Stack(true),
             Operation::Stack(false),
