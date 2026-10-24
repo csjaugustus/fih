@@ -235,29 +235,64 @@ impl MinimapState {
     }
 }
 
-/// Shows the minimap on commands that move around the strip (focus, swap,
-/// resize and the like), or every workspace's row when stepping up or down
-/// through them.
+/// What a batch of commands asks of the minimap.
+enum MinimapRequest {
+    Show(MinimapMode),
+    /// A jump straight to a workspace: no strip, and any still up goes.
+    Dismiss,
+}
+
+/// Shows the minimap for left and right navigation (the current row) and
+/// for stepping up or down through workspaces (every row); a jump straight to
+/// a workspace takes it down.
 pub(crate) fn minimap_on_command(
     mut messages: MessageReader<Event>,
     config: Res<Config>,
     mut state: ResMut<MinimapState>,
 ) {
-    let mode = messages.read().fold(None, |mode, event| match event {
-        Event::Command {
+    let request = messages.read().fold(None, |request, event| {
+        let Event::Command {
             command: Command::Window(operation),
-        } if steps_through_workspaces(operation) => Some(MinimapMode::Workspaces),
-        // A jump to a numbered workspace shows the strip it lands on.
-        Event::Command {
-            command: Command::Window(operation),
-        } if navigates_strip(operation) || jumps_to_workspace(operation) => {
-            mode.or(Some(MinimapMode::Strip))
+        } = event
+        else {
+            return request;
+        };
+        if steps_through_workspaces(operation) {
+            Some(MinimapRequest::Show(MinimapMode::Workspaces))
+        } else if navigates_strip(operation) {
+            request.or(Some(MinimapRequest::Show(MinimapMode::Strip)))
+        } else if jumps_to_workspace(operation) {
+            request.or(Some(MinimapRequest::Dismiss))
+        } else {
+            request
         }
-        _ => mode,
     });
-    if let Some(mode) = mode {
-        state.poke(&config, mode);
+    match request {
+        Some(MinimapRequest::Show(mode)) => state.poke(&config, mode),
+        Some(MinimapRequest::Dismiss) if state.timer.is_some() => state.timer = None,
+        _ => (),
     }
+}
+
+/// Whether `operation` moves left or right along the strip, or pins a window
+/// to (or off) one of its ends.
+fn navigates_strip(operation: &Operation) -> bool {
+    matches!(
+        operation,
+        Operation::Focus(
+            Direction::West
+                | Direction::East
+                | Direction::First
+                | Direction::Last
+                | Direction::Nth(_)
+        ) | Operation::Swap(
+            Direction::West
+                | Direction::East
+                | Direction::First
+                | Direction::Last
+                | Direction::Nth(_)
+        ) | Operation::Pin(_)
+    )
 }
 
 /// Whether `operation` jumps straight to a workspace, by number or a new one.
@@ -278,25 +313,6 @@ fn steps_through_workspaces(operation: &Operation) -> bool {
             | Operation::Virtual(_)
             | Operation::FocusOrVirtual(_)
             | Operation::VirtualMove(_, _)
-    )
-}
-
-/// Whether `operation` moves around, or reshapes, the current strip.
-fn navigates_strip(operation: &Operation) -> bool {
-    matches!(
-        operation,
-        Operation::Focus(_)
-            | Operation::Swap(_)
-            | Operation::Center
-            | Operation::Resize(_)
-            | Operation::StepWidth(_)
-            | Operation::SetWidth(_)
-            | Operation::FullWidth
-            | Operation::Balance
-            | Operation::Stack(_)
-            | Operation::Pin(_)
-            | Operation::ToggleTabbedDisplay
-            | Operation::Snap
     )
 }
 

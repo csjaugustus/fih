@@ -68,7 +68,7 @@ fn strip_show_toggles_the_minimap() {
 }
 
 #[test]
-fn stepping_through_workspaces_shows_every_row_but_a_jump_shows_one() {
+fn stepping_through_workspaces_shows_every_row_and_a_jump_shows_none() {
     let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
         .expect("config should parse");
 
@@ -85,8 +85,8 @@ fn stepping_through_workspaces_shows_every_row_but_a_jump_shows_one() {
         })
         .on_iteration(2, |world, _state| {
             assert!(
-                !world.resource::<MinimapState>().shows_every_workspace(),
-                "a jump to a numbered workspace shows only that one"
+                !minimap_visible(world),
+                "a jump to a numbered workspace takes the minimap down"
             );
         })
         .run(vec![
@@ -161,7 +161,7 @@ fn the_minimap_replaces_the_workspace_number_popup() {
 }
 
 #[test]
-fn jumping_to_an_empty_workspace_still_shows_its_number() {
+fn jumping_to_a_workspace_shows_neither_strip_nor_number() {
     let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
         .expect("config should parse");
 
@@ -170,9 +170,16 @@ fn jumping_to_an_empty_workspace_still_shows_its_number() {
         .with_windows(2)
         .on_iteration(1, |world, _state| {
             let mut messages = world.query::<&crate::ecs::FlashMessage>();
+            assert!(messages.iter(world).next().is_none(), "no number popup");
             assert!(
-                messages.iter(world).any(|message| message.0 == "2"),
-                "an empty workspace has no strip to show its number"
+                !minimap_visible(world),
+                "no strip for a jump to an empty workspace"
+            );
+        })
+        .on_iteration(2, |world, _state| {
+            assert!(
+                !minimap_visible(world),
+                "no strip for a jump to the current one"
             );
         })
         .run(vec![
@@ -181,6 +188,54 @@ fn jumping_to_an_empty_workspace_still_shows_its_number() {
             },
             Event::Command {
                 command: Command::Window(Operation::VirtualNumber(1)),
+            },
+            Event::Command {
+                command: Command::Window(Operation::VirtualNumber(1)),
+            },
+        ]);
+}
+
+#[test]
+fn reshaping_the_strip_does_not_show_the_minimap() {
+    let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
+        .expect("config should parse");
+
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(2)
+        .on_iteration(1, |world, _state| {
+            assert!(
+                !minimap_visible(world),
+                "only moving left or right shows it"
+            );
+        })
+        .run(vec![
+            Event::Command {
+                command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::Center),
+            },
+        ]);
+}
+
+#[test]
+fn pinning_shows_the_minimap() {
+    let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
+        .expect("config should parse");
+
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(2)
+        .on_iteration(1, |world, _state| {
+            assert!(minimap_visible(world), "pinning flashes the strip");
+        })
+        .run(vec![
+            Event::Command {
+                command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::Pin(Direction::West)),
             },
         ]);
 }

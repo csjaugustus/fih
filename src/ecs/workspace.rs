@@ -783,10 +783,8 @@ fn flash_workspace_on_activation(
         }
         return;
     }
-    // With the minimap on, its rows carry the workspace number instead,
-    // except on an empty workspace, where the minimap has nothing to show.
-    let minimap_shows_it = config.minimap_enabled() && !strip.all_windows().is_empty();
-    if switched && config.workspace_popup_status() && !minimap_shows_it {
+    // With the minimap on, its rows carry the workspace number instead.
+    if switched && config.workspace_popup_status() && !config.minimap_enabled() {
         commands.flash_message(format!("{}", strip.virtual_index + 1), 1.0);
     }
 }
