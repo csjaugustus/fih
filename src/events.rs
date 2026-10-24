@@ -209,6 +209,11 @@ pub enum Event {
     /// A command has been issued to the window manager.
     Command { command: Command },
 
+    /// A fih key binding was pressed; the command it maps to follows. Lets
+    /// mouse-follows-focus tell keyboard navigation from focus changes the
+    /// pointer, the menu or other apps caused.
+    KeybindPressed,
+
     /// A structured state query has been issued by a client.
     StateQuery {
         kind: StateQueryKind,

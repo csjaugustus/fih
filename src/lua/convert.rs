@@ -258,6 +258,7 @@ impl TryFrom<&Event> for LuaEvent {
             | Event::ApplicationFrontSwitched { .. }
             | Event::WindowCreated { .. }
             | Event::Command { .. }
+            | Event::KeybindPressed
             | Event::StateQuery { .. }
             | Event::WindowSetQuery { .. }
             | Event::StateSubscribe { .. }

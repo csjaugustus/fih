@@ -478,3 +478,32 @@ fn keyboard_focus_keeps_the_pointer_place_in_an_off_screen_window() {
             },
         ]);
 }
+
+/// Focus that changes without a key binding - a window closing, a click, an
+/// app switch - leaves the pointer where it is.
+#[test]
+fn focus_from_outside_the_keyboard_leaves_the_pointer_alone() {
+    let config: Config = (
+        MainOptions {
+            mouse_follows_focus: Some(true),
+            focus_follows_mouse: Some(false),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(3)
+        // macOS moves focus to another window on its own, as when the window
+        // that had it closes.
+        .on_iteration(0, |_world, state| state.set_focused_window(1))
+        .on_iteration(1, |world, state| {
+            assert_focused!(world, 1);
+            assert_eq!(state.cursor_position(), MockState::CURSOR_START);
+        })
+        .run(vec![
+            Event::MenuOpened { window_id: 0 },
+            Event::WindowFocused { window_id: 1 },
+        ]);
+}

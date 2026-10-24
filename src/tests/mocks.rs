@@ -76,9 +76,10 @@ struct MockDisplayData {
     workspaces: Vec<WorkspaceId>,
 }
 
-/// The pointer starts off every test window, so a keyboard focus change is
-/// never mistaken for one the pointer caused by already being on the window.
-const MOCK_CURSOR_START: Origin = Origin::new(-10_000, -10_000);
+/// The pointer starts on the main display, but in the menu bar where no
+/// window is: a keyboard focus change is then never mistaken for one the
+/// pointer caused, and the pointer still says which display is in front.
+const MOCK_CURSOR_START: Origin = Origin::new(TEST_DISPLAY_WIDTH - 1, TEST_MENUBAR_HEIGHT / 2);
 
 /// The internal state of our "Virtual macOS".
 struct MockStateInner {

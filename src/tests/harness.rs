@@ -210,6 +210,13 @@ impl TestHarness {
 
     pub(crate) fn run(&mut self, commands: Vec<Event>) {
         for (iteration, command) in commands.into_iter().enumerate() {
+            // A scripted command stands in for a key binding, as the event tap
+            // would send it.
+            if matches!(command, Event::Command { .. }) {
+                self.app
+                    .world_mut()
+                    .write_message::<Event>(Event::KeybindPressed);
+            }
             self.app.world_mut().write_message::<Event>(command);
 
             for _ in 0..UPDATES_PER_COMMAND {

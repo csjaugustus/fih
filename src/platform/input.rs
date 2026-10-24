@@ -707,6 +707,7 @@ impl InputHandler {
                 self.config.find_keybind(keycode, mask)
             })
             .and_then(|command| {
+                _ = events.send(Event::KeybindPressed);
                 events
                     .send(Event::Command { command })
                     .inspect_err(|err| error!("Error sending command: {err}"))

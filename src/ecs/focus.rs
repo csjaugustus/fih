@@ -11,7 +11,7 @@ use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs as _;
-use bevy::ecs::system::{Commands, NonSend, Populated, Query, Res, ResMut, Single};
+use bevy::ecs::system::{Commands, NonSend, Populated, Query, Res, ResMut, Single, SystemParam};
 use bevy::math::IRect;
 use bevy::prelude::Event as BevyEvent;
 use bevy::time::Time;
@@ -118,12 +118,16 @@ impl Plugin for FocusEventsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FocusHistory>();
         app.init_resource::<PointerPlace>();
+        app.init_resource::<KeyboardIntent>();
         app.add_message::<PageHapticRequest>();
         app.add_systems(
             Update,
             (
                 detect_focus_rejection.in_set(super::UpdateSet::Events),
                 fix_window_size_on_focus.in_set(super::UpdateSet::Focus),
+                note_keybinds
+                    .in_set(super::UpdateSet::Events)
+                    .run_if(bevy::ecs::schedule::common_conditions::on_message::<Event>),
                 record_pointer_place
                     .in_set(super::UpdateSet::Layout)
                     .before(super::layout::layout_strip_changed),
@@ -535,14 +539,19 @@ fn mouse_follows_focus(
     workspaces: MouseFocusStrips,
     restored: Query<&RestoreFocusMarker>,
     mut place: ResMut<PointerPlace>,
+    keyboard: KeyboardNavigation,
 ) {
     let entity = *focused;
-    // Where on its window the pointer was before the strip started moving.
-    let fraction = place
+    let recorded = place
         .0
         .take()
         .filter(|(focused, _)| *focused == entity)
-        .and_then(|(_, fraction)| fraction);
+        .map(|(_, fraction)| fraction);
+    // Only focus moved from the keyboard brings the pointer along: closing a
+    // window, clicking, switching apps or using the menu leaves it alone.
+    if !keyboard.recent() {
+        return;
+    }
     let Some(window) = windows.get(entity) else {
         return;
     };
@@ -599,7 +608,13 @@ fn mouse_follows_focus(
         if visible.size().length_squared() > 5000 {
             let origin = pointer.map_or_else(
                 || visible.center(),
-                |pointer| follow_pointer(pointer, fraction, frame, visible),
+                |pointer| {
+                    // Recorded before the strip moved, when there was a
+                    // chance to; otherwise read off the windows as they are.
+                    let fraction = recorded
+                        .unwrap_or_else(|| pointer_place(pointer, entity, &windows, &workspaces));
+                    follow_pointer(pointer, fraction, frame, visible)
+                },
             );
             debug!("moving the pointer to {} {origin}", window.id());
             window_manager.warp_mouse(origin);
@@ -631,6 +646,45 @@ pub(crate) fn settle_into_view(frame: IRect, viewport: IRect) -> IRect {
 #[derive(Debug, Default, Resource)]
 pub struct PointerPlace(Option<(Entity, Option<(f64, f64)>)>);
 
+/// When a fih key binding was last pressed, so the focus changes it leads to
+/// can bring the pointer along.
+#[derive(Debug, Default, Resource)]
+pub struct KeyboardIntent(Option<Duration>);
+
+/// How long after a key binding a focus change still counts as its doing.
+const KEYBOARD_INTENT_WINDOW: Duration = Duration::from_millis(500);
+
+/// Whether a fih key binding was pressed just now.
+#[derive(SystemParam)]
+struct KeyboardNavigation<'w> {
+    intent: Res<'w, KeyboardIntent>,
+    clock: Res<'w, Time>,
+}
+
+impl KeyboardNavigation<'_> {
+    /// Every focus change shortly after the key counts: one key can settle
+    /// focus over a few steps (across displays, onto a restored window).
+    fn recent(&self) -> bool {
+        self.intent.0.is_some_and(|pressed| {
+            self.clock.elapsed().saturating_sub(pressed) <= KEYBOARD_INTENT_WINDOW
+        })
+    }
+}
+
+/// Notes key binding presses for [`mouse_follows_focus`].
+fn note_keybinds(
+    mut messages: MessageReader<Event>,
+    clock: Res<Time>,
+    mut intent: ResMut<KeyboardIntent>,
+) {
+    if messages
+        .read()
+        .any(|event| matches!(event, Event::KeybindPressed))
+    {
+        intent.0 = Some(clock.elapsed());
+    }
+}
+
 /// Records where on its window the pointer is as focus moves, while every
 /// window is still where the user last saw it.
 fn record_pointer_place(
@@ -645,17 +699,28 @@ fn record_pointer_place(
         return;
     }
     let entity = *focused;
-    let pointer = window_manager.cursor_position().map(origin_from);
-    let fraction = pointer.and_then(|pointer| {
-        workspaces
-            .iter()
-            .filter(|(_, _, _, active, _, _)| *active)
-            .flat_map(|(strip, _, _, _, _, _)| strip.all_windows())
-            .filter(|other| *other != entity)
-            .filter_map(|other| windows.frame(other))
-            .find_map(|frame| place_on(pointer, frame))
-    });
+    let fraction = window_manager
+        .cursor_position()
+        .map(origin_from)
+        .and_then(|pointer| pointer_place(pointer, entity, &windows, &workspaces));
     place.0 = Some((entity, fraction));
+}
+
+/// Where `pointer` is on whichever window of the active strip it is on,
+/// other than `focused`.
+fn pointer_place(
+    pointer: Origin,
+    focused: Entity,
+    windows: &Windows,
+    workspaces: &MouseFocusStrips,
+) -> Option<(f64, f64)> {
+    workspaces
+        .iter()
+        .filter(|(_, _, _, active, _, _)| *active)
+        .flat_map(|(strip, _, _, _, _, _)| strip.all_windows())
+        .filter(|other| *other != focused)
+        .filter_map(|other| windows.frame(other))
+        .find_map(|frame| place_on(pointer, frame))
 }
 
 /// Where `pointer` is on `frame`, as fractions of its width and height, if

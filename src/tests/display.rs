@@ -324,9 +324,11 @@ fn test_mouse_to_next_display() {
             data.frame = frame;
         })
         .on_iteration(1, move |world, state| {
+            // Startup focus is no keyboard navigation, so the pointer stays
+            // put; start it on the window, on the main display.
             let entity = find_window_entity(100, world);
             let window = world.get::<Window>(entity).expect("need window");
-            assert!(window.frame().contains(state.cursor_position()));
+            state.set_cursor_position(window.frame().center());
         })
         .on_iteration(3, move |world, state| {
             let mut query = world.query::<(&Display, Option<&DockPosition>)>();
@@ -971,6 +973,12 @@ fn focus_south_to_another_display_does_not_flash() {
         .with_windows(1)
         .with_workspace_window(100, EXT_WORKSPACE_ID, |window| {
             window.workspace_id = EXT_WORKSPACE_ID;
+        })
+        // The pointer rests on the focused window, as a user's would.
+        .on_iteration(0, |world, state| {
+            let entity = find_window_entity(0, world);
+            let window = world.get::<Window>(entity).expect("need window");
+            state.set_cursor_position(window.frame().center());
         });
     harness.run(vec![
         Event::MenuOpened { window_id: 0 },
