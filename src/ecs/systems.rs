@@ -1006,6 +1006,7 @@ pub(super) fn update_overlays(
     theme: Option<Res<SystemTheme>>,
     mut window_config_cache: Local<OverlayWindowConfigCache>,
     window_manager: Res<WindowManager>,
+    display: Query<(&Display, Option<&DockPosition>), With<ActiveDisplayMarker>>,
 ) {
     use crate::overlay::BorderParams;
     use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -1068,7 +1069,14 @@ pub(super) fn update_overlays(
         ))
     };
 
-    let border_params = if border_enabled {
+    // A window filling the screen - fill screen, toggled to full width, or
+    // alone on its workspace - has no border: it would frame the whole screen.
+    let fills_screen = windows.full_width(entity).is_some()
+        || display.single().is_ok_and(|(display, dock)| {
+            let viewport = display.actual_display_bounds(dock, &config);
+            window.frame().width() >= viewport.width() - 2
+        });
+    let border_params = if border_enabled && !fills_screen {
         if window_config_cache.window_id != Some(focused_window_id) || config.is_changed() {
             let Some((window, _, parent)) = windows.find_parent(focused_window_id) else {
                 return;

@@ -58,11 +58,13 @@ enabled = true
 enabled = true
 interactive = true
 
-# Border around the focused window.
+# A subtle teal border around the focused window (same teal as the strip
+# map). A window filling the screen never gets one.
 [decorations.active.border]
-enabled = false
-width = 2.0
+enabled = true
+width = 1.5
 color = "#5AC5C9"
+opacity = 0.85
 radius = 10.0
 
 # Shortcut syntax: "mod + mod - key" with mods alt, shift, cmd, ctrl.

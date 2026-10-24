@@ -141,7 +141,8 @@ pub fn register_systems(app: &mut bevy::app::App) {
          strip_changed: Query<(), (With<ActiveWorkspaceMarker>, Changed<LayoutStrip>)>,
          focus_gained: Query<(), Added<FocusedMarker>>,
          workspace_changed: Query<(), Added<ActiveWorkspaceMarker>>,
-         focused_moved: Query<(), (With<FocusedMarker>, Changed<Position>)>| {
+         focused_moved: Query<(), (With<FocusedMarker>, Changed<Position>)>,
+         focused_resized: Query<(), (With<FocusedMarker>, Changed<Bounds>)>| {
             let Some(config) = config else {
                 return false;
             };
@@ -152,7 +153,8 @@ pub fn register_systems(app: &mut bevy::app::App) {
                         || !strip_changed.is_empty()
                         || !focus_gained.is_empty()
                         || !workspace_changed.is_empty()
-                        || !focused_moved.is_empty()))
+                        || !focused_moved.is_empty()
+                        || !focused_resized.is_empty()))
         };
     let native_tabs_enabled =
         |config: Option<Res<Config>>| config.is_none_or(|config| config.native_tabs_enabled());

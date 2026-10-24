@@ -567,7 +567,7 @@ color = "#000000"
 ```
 
 ### Active Window Border
-Draws a colored border around the currently focused window.
+Draws a colored border around the currently focused window. A window that fills the screen (native fullscreen, `window_fullwidth`, toggled to full width, or alone on its workspace) never gets one.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
