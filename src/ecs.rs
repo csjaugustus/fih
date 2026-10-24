@@ -9,7 +9,7 @@ use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::query::{Added, Changed, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::SystemCondition;
-use bevy::ecs::schedule::common_conditions::{not, resource_changed, resource_exists};
+use bevy::ecs::schedule::common_conditions::{not, on_message, resource_changed, resource_exists};
 use bevy::ecs::schedule::{ScheduleLabel as _, SingleThreadedExecutor, SystemSet};
 use bevy::ecs::system::{Commands, EntityCommands, Query, Res, SystemId};
 use bevy::prelude::Event as BevyEvent;
@@ -296,12 +296,17 @@ pub fn register_systems(app: &mut bevy::app::App) {
         (
             (
                 systems::update_overlays.run_if(overlays_dirty),
+                (
+                    crate::minimap::minimap_on_command.run_if(on_message::<Event>),
+                    crate::minimap::minimap_on_swipe,
+                )
+                    .run_if(|config: Res<Config>| config.minimap_enabled()),
+                crate::minimap::update_minimap.run_if(crate::minimap::minimap_active),
                 systems::update_flash_messages,
             )
                 .chain(),
             crate::menubar::update_menu_bar.run_if(
                 crate::menubar::menu_bar_dirty
-                    .or_eager(crate::menubar::menu_viewport_dirty)
                     .or_eager(resource_changed::<Config>)
                     .or_eager(resource_changed::<crate::menubar::MenuBarVisibility>),
             ),
@@ -900,9 +905,11 @@ pub fn setup_bevy_app(sender: EventSender, receiver: Receiver<Event>) -> Result<
     let mtm = platform_callbacks.main_thread_marker;
     let overlay_manager = OverlayManager::new(mtm);
     let flash_message_manager = FlashMessageManager::new(mtm);
+    let minimap_manager = crate::minimap::MinimapManager::new(mtm, menu_events.clone());
     app.insert_non_send(platform_callbacks)
         .insert_non_send(overlay_manager)
         .insert_non_send(flash_message_manager)
+        .insert_non_send(minimap_manager)
         .insert_non_send(receiver);
 
     // `CONFIGURATION_FILE` is `None` exactly when an `init.lua` took the TOML

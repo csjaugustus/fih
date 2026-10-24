@@ -1,0 +1,608 @@
+//! The strip minimap: a row of app icons along the bottom of the screen, one
+//! per column, with the visible part of the strip outlined. It comes up
+//! briefly while navigating (`[decorations.minimap] enabled`) and stays up
+//! while toggled on with `strip_show`. Clicking an icon focuses that column.
+
+use std::collections::HashMap;
+use std::time::Duration;
+
+use bevy::ecs::change_detection::DetectChanges;
+use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
+use bevy::ecs::message::MessageReader;
+use bevy::ecs::query::{Changed, With};
+use bevy::ecs::resource::Resource;
+use bevy::ecs::system::{NonSendMut, Populated, Query, Res, ResMut, Single};
+use bevy::math::IRect;
+use bevy::time::{Time, Timer, TimerMode};
+use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
+use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
+use objc2_app_kit::{
+    NSBackingStoreType, NSBezierPath, NSColor, NSCompositingOperation, NSEvent,
+    NSFloatingWindowLevel, NSImage, NSPanel, NSRunningApplication, NSView,
+    NSWindowCollectionBehavior, NSWindowStyleMask,
+};
+use objc2_core_foundation::CGFloat;
+use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+use crate::commands::{Command, Direction, Operation};
+use crate::config::Config;
+use crate::ecs::layout::LayoutStrip;
+use crate::ecs::{
+    ActiveDisplayMarker, ActiveWorkspaceMarker, Bounds, DockPosition, FocusedMarker, Position,
+    RepositionMarker, Scrolling,
+};
+use crate::events::{Event, EventSender};
+use crate::manager::{Display, Window};
+use crate::platform::Pid;
+
+/// Height of the minimap panel, in points.
+pub(crate) const MINIMAP_HEIGHT: f64 = 78.0;
+/// Gap between the minimap and the bottom of the usable screen area.
+pub(crate) const MINIMAP_BOTTOM_MARGIN: f64 = 24.0;
+/// The minimap never grows past this share of the display width.
+const MAX_WIDTH_RATIO: f64 = 0.8;
+const PANEL_PADDING: f64 = 12.0;
+const TILE_GAP: f64 = 3.0;
+const ICON_SIZE: f64 = 42.0;
+/// Room for a column's tile: its icon, a little padding either side, and the
+/// gap to the next tile.
+const SLOT_WIDTH: f64 = ICON_SIZE + 2.0 * 7.5 + TILE_GAP;
+/// The last part of the timeout the minimap spends fading out.
+const FADE_SECONDS: f32 = 0.3;
+
+/// One column of the active strip, in absolute screen x.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MinimapColumn {
+    pub pid: Option<Pid>,
+    pub x: i32,
+    pub width: i32,
+    pub focused: bool,
+}
+
+/// What the minimap shows: the strip's columns and the visible range, both
+/// in absolute screen x.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MinimapSnapshot {
+    pub columns: Vec<MinimapColumn>,
+    pub viewport: (i32, i32),
+}
+
+/// Where everything lands inside the panel, in points from its left edge.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct MinimapGeometry {
+    /// `(x, width)` of each column's tile.
+    pub tiles: Vec<(f64, f64)>,
+    /// `(x, width)` of the visible-range outline.
+    pub viewport: (f64, f64),
+    /// Width of the whole panel.
+    pub width: f64,
+}
+
+/// Gives every column a [`SLOT_WIDTH`] slot, whatever its width, shrinking
+/// the slots when they would make the panel wider than `max_width`. The
+/// visible-range outline maps onto the slots: a column half on screen has
+/// half its slot inside the outline.
+pub(crate) fn minimap_geometry(snapshot: &MinimapSnapshot, max_width: f64) -> MinimapGeometry {
+    let columns = &snapshot.columns;
+    if columns.is_empty() {
+        return MinimapGeometry {
+            tiles: Vec::new(),
+            viewport: (PANEL_PADDING, SLOT_WIDTH),
+            width: SLOT_WIDTH + 2.0 * PANEL_PADDING,
+        };
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    let count = columns.len() as f64;
+    let available = (max_width - 2.0 * PANEL_PADDING).max(1.0);
+    let slot = SLOT_WIDTH.min(available / count);
+    #[allow(clippy::cast_precision_loss)]
+    let slot_start = |index: usize| PANEL_PADDING + index as f64 * slot;
+    let to_panel = |x: i32| {
+        for (index, column) in columns.iter().enumerate() {
+            if x <= column.x {
+                return slot_start(index);
+            }
+            if x < column.x + column.width {
+                let fraction = f64::from(x - column.x) / f64::from(column.width.max(1));
+                return slot_start(index) + fraction * slot;
+            }
+        }
+        slot_start(columns.len())
+    };
+
+    let (view_min, view_max) = snapshot.viewport;
+    let view_start = to_panel(view_min);
+    MinimapGeometry {
+        tiles: (0..columns.len())
+            .map(|index| (slot_start(index), slot))
+            .collect(),
+        viewport: (view_start, to_panel(view_max) - view_start),
+        width: count * slot + 2.0 * PANEL_PADDING,
+    }
+}
+
+/// When the minimap is up, and why.
+#[derive(Debug, Default, Resource)]
+pub struct MinimapState {
+    /// Counts down from the last navigation; `None` when not navigating.
+    timer: Option<Timer>,
+    /// Toggled by `strip_show`: stays up until toggled off.
+    pinned: bool,
+}
+
+impl MinimapState {
+    pub fn visible(&self) -> bool {
+        self.pinned
+            || self
+                .timer
+                .as_ref()
+                .is_some_and(|timer| !timer.is_finished())
+    }
+
+    fn opacity(&self) -> f32 {
+        if self.pinned {
+            return 1.0;
+        }
+        self.timer.as_ref().map_or(0.0, |timer| {
+            (timer.remaining_secs() / FADE_SECONDS).clamp(0.0, 1.0)
+        })
+    }
+
+    fn poke(&mut self, config: &Config) {
+        let duration = Duration::from_secs_f64(config.minimap_duration());
+        self.timer = Some(Timer::new(duration, TimerMode::Once));
+    }
+}
+
+/// Shows the minimap on any window command: focus, swap, resize, workspace
+/// switches and the rest all move around the strip.
+pub(crate) fn minimap_on_command(
+    mut messages: MessageReader<Event>,
+    config: Res<Config>,
+    mut state: ResMut<MinimapState>,
+) {
+    if messages.read().any(|event| {
+        matches!(
+            event,
+            Event::Command {
+                command: Command::Window(_),
+            }
+        )
+    }) {
+        state.poke(&config);
+    }
+}
+
+/// The active strip, while a swipe or scroll is moving it.
+type SwipedStrip<'w, 's> = Populated<
+    'w,
+    's,
+    (),
+    (
+        With<ActiveWorkspaceMarker>,
+        With<Scrolling>,
+        Changed<Position>,
+    ),
+>;
+
+/// Shows the minimap while the strip is swiped or scrolled.
+pub(crate) fn minimap_on_swipe(
+    _swiped: SwipedStrip,
+    config: Res<Config>,
+    mut state: ResMut<MinimapState>,
+) {
+    state.poke(&config);
+}
+
+/// Toggles the minimap on `strip_show`.
+pub(crate) fn strip_show_handler(
+    mut messages: MessageReader<Event>,
+    mut state: ResMut<MinimapState>,
+) {
+    for event in messages.read() {
+        if let Event::Command {
+            command: Command::StripShow,
+        } = event
+        {
+            state.pinned = !state.pinned;
+            state.timer = None;
+        }
+    }
+}
+
+/// Whether the minimap has anything to draw or take down this frame.
+pub(crate) fn minimap_active(state: Res<MinimapState>) -> bool {
+    state.pinned || state.timer.is_some() || state.is_changed()
+}
+
+/// Draws the minimap for the active strip, or takes it down once it times out.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn update_minimap(
+    strip: Single<
+        (&LayoutStrip, &Position, Option<&RepositionMarker>, &ChildOf),
+        With<ActiveWorkspaceMarker>,
+    >,
+    displays: Query<(&Display, Option<&DockPosition>), With<ActiveDisplayMarker>>,
+    windows: Query<(&Window, &Bounds)>,
+    focused: Query<Entity, With<FocusedMarker>>,
+    config: Res<Config>,
+    clock: Res<Time>,
+    mut state: ResMut<MinimapState>,
+    manager: Option<NonSendMut<MinimapManager>>,
+) {
+    let Some(mut manager) = manager else {
+        return;
+    };
+    // Only touch the state mutably while counting down: a mutable borrow
+    // marks it changed, which would keep `minimap_active` true for good.
+    if state.timer.is_some()
+        && let Some(timer) = state.timer.as_mut()
+        && timer.tick(clock.delta()).is_finished()
+    {
+        state.timer = None;
+    }
+    let (layout_strip, Position(position), reposition, child_of) = *strip;
+    let Ok((display, dock)) = displays.get(child_of.parent()) else {
+        return;
+    };
+    if !state.visible() {
+        manager.hide();
+        return;
+    }
+
+    let strip_x = reposition.map_or(position.x, |target| target.0.x);
+    let frame = |entity| {
+        windows
+            .get(entity)
+            .ok()
+            .map(|(_, Bounds(size))| IRect::new(0, 0, size.x, size.y))
+    };
+    let focused = focused.iter().next();
+    let columns = layout_strip
+        .column_positions(&frame)
+        .filter_map(|(column, x)| {
+            let top = column.top()?;
+            Some(MinimapColumn {
+                pid: windows
+                    .get(top)
+                    .ok()
+                    .and_then(|(window, _)| window.pid().ok()),
+                x: strip_x + x,
+                width: column.width(&frame)?,
+                focused: focused.is_some_and(|entity| column.window_iter().any(|e| e == entity)),
+            })
+        })
+        .collect();
+    let viewport = display.actual_display_bounds(dock, &config);
+    let snapshot = MinimapSnapshot {
+        columns,
+        viewport: (viewport.min.x, viewport.max.x),
+    };
+
+    let edge = display.edge_bounds(dock, &config);
+    let bottom_center = NSPoint::new(
+        f64::from(edge.min.x + edge.max.x) / 2.0,
+        f64::from(edge.max.y),
+    );
+    let max_width = f64::from(edge.width()) * MAX_WIDTH_RATIO;
+    manager.show(
+        &snapshot,
+        state.opacity(),
+        bottom_center,
+        max_width,
+        config.minimap_interactive(),
+    );
+}
+
+// ── AppKit ──────────────────────────────────────────────────────────────
+
+struct Tile {
+    rect: NSRect,
+    icon: Option<Retained<NSImage>>,
+    focused: bool,
+}
+
+struct MinimapViewIvars {
+    tiles: Vec<Tile>,
+    viewport: NSRect,
+    opacity: f32,
+    /// Where clicks go; `None` when the minimap is not interactive.
+    events: Option<EventSender>,
+}
+
+define_class!(
+    #[unsafe(super(NSView))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "FihMinimapView"]
+    #[ivars = MinimapViewIvars]
+    struct MinimapView;
+
+    impl MinimapView {
+        #[unsafe(method(drawRect:))]
+        fn draw_rect(&self, _dirty_rect: NSRect) {
+            let ivars = self.ivars();
+            let alpha = |value: f32| CGFloat::from(ivars.opacity * value);
+            let bounds = self.bounds();
+
+            NSColor::colorWithSRGBRed_green_blue_alpha(0.12, 0.12, 0.12, alpha(0.88)).setFill();
+            let radius = bounds.size.height / 4.0;
+            let panel =
+                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(bounds, radius, radius);
+            panel.fill();
+            NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, alpha(0.15)).setStroke();
+            panel.setLineWidth(1.0);
+            panel.stroke();
+
+            for tile in &ivars.tiles {
+                let fill = if tile.focused { 0.30 } else { 0.08 };
+                NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, alpha(fill)).setFill();
+                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(tile.rect, 9.0, 9.0)
+                    .fill();
+
+                let Some(icon) = &tile.icon else {
+                    continue;
+                };
+                let size = ICON_SIZE.min(tile.rect.size.width - 6.0);
+                if size < 12.0 {
+                    continue;
+                }
+                let icon_rect = NSRect::new(
+                    NSPoint::new(
+                        tile.rect.origin.x + (tile.rect.size.width - size) / 2.0,
+                        tile.rect.origin.y + (tile.rect.size.height - size) / 2.0,
+                    ),
+                    NSSize::new(size, size),
+                );
+                icon.drawInRect_fromRect_operation_fraction(
+                    icon_rect,
+                    NSRect::ZERO,
+                    NSCompositingOperation::SourceOver,
+                    alpha(1.0),
+                );
+            }
+
+            NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, alpha(0.7)).setStroke();
+            let outline =
+                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(ivars.viewport, 12.0, 12.0);
+            outline.setLineWidth(2.0);
+            outline.stroke();
+        }
+
+        #[unsafe(method(acceptsFirstMouse:))]
+        fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool {
+            true
+        }
+
+        #[unsafe(method(mouseDown:))]
+        fn mouse_down(&self, event: &NSEvent) {
+            let ivars = self.ivars();
+            let Some(events) = &ivars.events else {
+                return;
+            };
+            let point = self.convertPoint_fromView(event.locationInWindow(), None);
+            let Some(index) = ivars.tiles.iter().position(|tile| {
+                point.x >= tile.rect.origin.x && point.x <= tile.rect.origin.x + tile.rect.size.width
+            }) else {
+                return;
+            };
+            let command = Command::Window(Operation::Focus(Direction::Nth(index)));
+            if let Err(err) = events.send(Event::Command { command }) {
+                tracing::warn!("minimap click: {err}");
+            }
+        }
+    }
+);
+
+impl MinimapView {
+    fn new(mtm: MainThreadMarker, frame: NSRect, ivars: MinimapViewIvars) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(ivars);
+        unsafe { msg_send![super(this), initWithFrame: frame] }
+    }
+}
+
+/// Owns the minimap panel and the app icons it draws.
+pub struct MinimapManager {
+    mtm: MainThreadMarker,
+    events: EventSender,
+    panel: Option<Retained<NSPanel>>,
+    icons: HashMap<Pid, Option<Retained<NSImage>>>,
+    /// What is on screen, so an unchanged frame is not redrawn.
+    shown: Option<(MinimapSnapshot, f32, bool)>,
+}
+
+impl MinimapManager {
+    pub fn new(mtm: MainThreadMarker, events: EventSender) -> Self {
+        Self {
+            mtm,
+            events,
+            panel: None,
+            icons: HashMap::new(),
+            shown: None,
+        }
+    }
+
+    fn icon(&mut self, pid: Pid) -> Option<Retained<NSImage>> {
+        self.icons
+            .entry(pid)
+            .or_insert_with(|| {
+                NSRunningApplication::runningApplicationWithProcessIdentifier(pid)
+                    .and_then(|app| app.icon())
+            })
+            .clone()
+    }
+
+    fn show(
+        &mut self,
+        snapshot: &MinimapSnapshot,
+        opacity: f32,
+        bottom_center_abs_cg: NSPoint,
+        max_width: f64,
+        interactive: bool,
+    ) {
+        let key = (snapshot.clone(), opacity, interactive);
+        if self.shown.as_ref() == Some(&key) {
+            return;
+        }
+
+        let geometry = minimap_geometry(snapshot, max_width);
+        let tile_height = MINIMAP_HEIGHT - 2.0 * PANEL_PADDING;
+        let tiles = snapshot
+            .columns
+            .iter()
+            .zip(&geometry.tiles)
+            .map(|(column, &(x, width))| Tile {
+                rect: NSRect::new(
+                    NSPoint::new(x + TILE_GAP / 2.0, PANEL_PADDING),
+                    NSSize::new((width - TILE_GAP).max(1.0), tile_height),
+                ),
+                icon: column.pid.and_then(|pid| self.icon(pid)),
+                focused: column.focused,
+            })
+            .collect();
+        let (view_x, view_width) = geometry.viewport;
+        let viewport = NSRect::new(
+            NSPoint::new(view_x, PANEL_PADDING / 2.0),
+            NSSize::new(view_width, MINIMAP_HEIGHT - PANEL_PADDING),
+        );
+
+        let size = NSSize::new(geometry.width, MINIMAP_HEIGHT);
+        let screen_height = crate::overlay::primary_screen_height(self.mtm);
+        let frame = NSRect::new(
+            NSPoint::new(
+                bottom_center_abs_cg.x - size.width / 2.0,
+                screen_height - bottom_center_abs_cg.y + MINIMAP_BOTTOM_MARGIN,
+            ),
+            size,
+        );
+        let view = MinimapView::new(
+            self.mtm,
+            NSRect::new(NSPoint::new(0.0, 0.0), size),
+            MinimapViewIvars {
+                tiles,
+                viewport,
+                opacity,
+                events: interactive.then(|| self.events.clone()),
+            },
+        );
+
+        let panel = self
+            .panel
+            .get_or_insert_with(|| make_panel(self.mtm, frame));
+        panel.setIgnoresMouseEvents(!interactive);
+        panel.setContentView(Some(&view));
+        panel.setFrame_display(frame, true);
+        panel.orderFront(None::<&AnyObject>);
+        self.shown = Some(key);
+    }
+
+    fn hide(&mut self) {
+        if let Some(panel) = &self.panel {
+            panel.orderOut(None::<&AnyObject>);
+        }
+        self.shown = None;
+        // Apps come and go; look their icons up afresh next time.
+        self.icons.clear();
+    }
+}
+
+/// A borderless panel that takes clicks without activating fih, so the click
+/// that focuses a window does not first pull focus away from the current one.
+fn make_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<NSPanel> {
+    let panel: Retained<NSPanel> = unsafe {
+        msg_send![
+            NSPanel::alloc(mtm),
+            initWithContentRect: frame,
+            styleMask: NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel,
+            backing: NSBackingStoreType::Buffered,
+            defer: false,
+        ]
+    };
+    panel.setOpaque(false);
+    panel.setBackgroundColor(Some(&NSColor::clearColor()));
+    panel.setHasShadow(false);
+    panel.setLevel(NSFloatingWindowLevel + 1);
+    panel.setCollectionBehavior(
+        NSWindowCollectionBehavior::Transient
+            | NSWindowCollectionBehavior::IgnoresCycle
+            | NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::FullScreenNone,
+    );
+    panel
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MinimapColumn, MinimapSnapshot, PANEL_PADDING, SLOT_WIDTH, minimap_geometry};
+
+    fn column(x: i32, width: i32) -> MinimapColumn {
+        MinimapColumn {
+            pid: None,
+            x,
+            width,
+            focused: false,
+        }
+    }
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-9
+    }
+
+    #[test]
+    fn every_column_gets_one_icon_slot() {
+        let snapshot = MinimapSnapshot {
+            columns: vec![column(-1000, 1000), column(0, 500), column(500, 2000)],
+            viewport: (0, 1000),
+        };
+        let geometry = minimap_geometry(&snapshot, 10_000.0);
+        for (index, &(x, width)) in geometry.tiles.iter().enumerate() {
+            assert!(close(width, SLOT_WIDTH));
+            assert!(close(
+                x,
+                PANEL_PADDING + f64::from(u8::try_from(index).unwrap()) * SLOT_WIDTH
+            ));
+        }
+        assert!(close(
+            geometry.width,
+            3.0 * SLOT_WIDTH + 2.0 * PANEL_PADDING
+        ));
+    }
+
+    #[test]
+    fn outline_covers_the_on_screen_share_of_each_slot() {
+        let snapshot = MinimapSnapshot {
+            columns: vec![column(-1000, 1000), column(0, 500), column(500, 2000)],
+            viewport: (0, 1000),
+        };
+        let geometry = minimap_geometry(&snapshot, 10_000.0);
+        // Starts where the second column does and takes a quarter of the
+        // third, which is 500 of its 2000 on screen.
+        assert!(close(geometry.viewport.0, PANEL_PADDING + SLOT_WIDTH));
+        assert!(close(geometry.viewport.1, 1.25 * SLOT_WIDTH));
+    }
+
+    #[test]
+    fn long_strips_shrink_to_fit() {
+        let snapshot = MinimapSnapshot {
+            columns: (0..40).map(|i| column(i * 1000, 1000)).collect(),
+            viewport: (0, 1000),
+        };
+        let geometry = minimap_geometry(&snapshot, 800.0);
+        assert!(close(geometry.width, 800.0));
+        assert!(geometry.tiles[0].1 < SLOT_WIDTH);
+    }
+
+    #[test]
+    fn empty_strip_shows_only_the_viewport() {
+        let snapshot = MinimapSnapshot {
+            columns: Vec::new(),
+            viewport: (100, 1100),
+        };
+        let geometry = minimap_geometry(&snapshot, 10_000.0);
+        assert_eq!(geometry.tiles, []);
+        assert!(close(geometry.viewport.0, PANEL_PADDING));
+    }
+}

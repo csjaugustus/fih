@@ -74,9 +74,13 @@ struct PagingFocusParams<'w, 's> {
 
 pub fn register_commands(app: &mut bevy::app::App) {
     app.init_resource::<crate::menubar::MenuBarVisibility>()
+        .init_resource::<crate::minimap::MinimapState>()
         .add_systems(
             PreUpdate,
-            crate::menubar::menu_bar_command_handler
+            (
+                crate::menubar::menu_bar_command_handler,
+                crate::minimap::strip_show_handler,
+            )
                 .in_set(crate::ecs::PreUpdateSet::Dispatch)
                 .run_if(on_message::<Event>),
         )

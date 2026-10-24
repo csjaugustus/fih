@@ -88,6 +88,7 @@ pub fn install(lua: &Lua, paneru: &Table, dispatch: &Dispatch) -> Result<()> {
 
     paneru.set("showmenu", verb(lua, dispatch, Command::MenuBar(true))?)?;
     paneru.set("hidemenu", verb(lua, dispatch, Command::MenuBar(false))?)?;
+    paneru.set("strip_show", verb(lua, dispatch, Command::StripShow)?)?;
 
     paneru.set("quit", verb(lua, dispatch, Command::Quit)?)?;
     paneru.set("restart", verb(lua, dispatch, Command::Restart)?)?;

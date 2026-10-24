@@ -19,6 +19,7 @@ use tracing::{error, info, warn};
 
 use self::decorations::{
     BorderRadiusOption, DescriptorStyle, IndicatorFormat, IndicatorStyle, MenubarOrientation,
+    MinimapOptions,
 };
 use self::swipe::SwipeGestureDirection;
 
@@ -927,6 +928,36 @@ impl Config {
             .as_ref()
             .and_then(|decorations| decorations.workspace_popup_status)
             .is_none_or(|enabled| enabled)
+    }
+
+    fn minimap(&self) -> Option<MinimapOptions> {
+        self.inner()
+            .decorations
+            .as_ref()
+            .and_then(|decorations| decorations.minimap.clone())
+    }
+
+    /// Whether navigating the strip briefly shows the minimap.
+    pub fn minimap_enabled(&self) -> bool {
+        self.minimap()
+            .and_then(|minimap| minimap.enabled)
+            .is_some_and(|enabled| enabled)
+    }
+
+    /// Whether clicking a minimap icon focuses its window.
+    pub fn minimap_interactive(&self) -> bool {
+        self.minimap()
+            .and_then(|minimap| minimap.interactive)
+            .is_none_or(|interactive| interactive)
+    }
+
+    /// Seconds the minimap stays up after the last navigation.
+    pub fn minimap_duration(&self) -> f64 {
+        const DEFAULT_DURATION: f64 = 1.0;
+        self.minimap()
+            .and_then(|minimap| minimap.duration)
+            .filter(|duration| duration.is_finite() && *duration > 0.0)
+            .unwrap_or(DEFAULT_DURATION)
     }
 
     pub fn virtual_workspace_animations(&self) -> bool {

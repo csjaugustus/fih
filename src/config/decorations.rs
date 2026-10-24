@@ -8,6 +8,23 @@ pub struct DecorationsOptions {
     pub workspace_menu_status: Option<bool>,
     pub menu: Option<MenubarOptions>,
     pub workspace_popup_status: Option<bool>,
+    pub minimap: Option<MinimapOptions>,
+}
+
+/// The strip minimap: a row of app icons, one per column, with the visible
+/// part of the strip outlined.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[cfg_attr(test, derive(serde::Serialize))]
+pub struct MinimapOptions {
+    /// Show the minimap briefly while navigating the strip.
+    /// Default: false.
+    pub enabled: Option<bool>,
+    /// Clicking an icon focuses that column's window.
+    /// Default: true.
+    pub interactive: Option<bool>,
+    /// Seconds the minimap stays up after the last navigation.
+    /// Default: 1.0.
+    pub duration: Option<f64>,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]

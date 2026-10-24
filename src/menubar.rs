@@ -1,7 +1,7 @@
 use bevy::ecs::change_detection::{DetectChanges, DetectChangesMut};
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::message::MessageReader;
-use bevy::ecs::query::{Added, Changed, Has, Or, With};
+use bevy::ecs::query::{Added, Changed, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{NonSendMut, Query, Res, ResMut};
 use objc2::rc::Retained;
@@ -10,10 +10,10 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSBezierPath, NSBitmapImageRep, NSCellImagePosition, NSColor, NSCompositingOperation,
-    NSControlStateValueOff, NSControlStateValueOn, NSDeviceRGBColorSpace, NSFont, NSGradient,
-    NSGraphicsContext, NSImage, NSImageScaling, NSImageView, NSLayoutAttribute, NSMenu, NSMenuItem,
-    NSScreen, NSStackView, NSStatusBar, NSStatusItem, NSTextField,
-    NSUserInterfaceLayoutOrientation, NSVariableStatusItemLength, NSView,
+    NSDeviceRGBColorSpace, NSFont, NSGradient, NSGraphicsContext, NSImage, NSImageScaling,
+    NSImageView, NSLayoutAttribute, NSMenu, NSMenuItem, NSScreen, NSStackView, NSStatusBar,
+    NSStatusItem, NSTextField, NSUserInterfaceLayoutOrientation, NSVariableStatusItemLength,
+    NSView,
 };
 use objc2_core_foundation::{CGFloat, CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSArray, NSData, NSInteger, NSObject, NSString};
@@ -25,18 +25,15 @@ use crate::accessibility_prompt::{
     AccessibilitySetupAction, handle_accessibility_setup_action, permission_pane_name,
     show_accessibility_setup,
 };
-use crate::commands::{Command, Operation};
+use crate::commands::Command;
 use crate::config::Config;
 use crate::config::decorations::{
     DescriptorStyle, IndicatorFormat, IndicatorStyle, MenubarOrientation,
 };
+use crate::ecs::ActiveWorkspaceMarker;
 use crate::ecs::layout::LayoutStrip;
 use crate::ecs::params::ActiveDisplay;
-use crate::ecs::{
-    ActiveDisplayMarker, ActiveWorkspaceMarker, Bounds, DockPosition, FocusedMarker, Unmanaged,
-};
 use crate::events::{Event, EventSender};
-use crate::manager::Display;
 use crate::util::round_px;
 
 /// A menu or command choice overrides the configuration until changed again.
@@ -153,28 +150,21 @@ define_class!(
     struct MenuActionTarget;
 
     impl MenuActionTarget {
-        #[unsafe(method(setWidth:))]
-        fn set_width(&self, item: &NSMenuItem) {
-            let Ok(percentage) = i32::try_from(item.tag()) else {
+        #[unsafe(method(openConfig:))]
+        fn open_config(&self, _: &NSMenuItem) {
+            let Some(path) = config_file() else {
+                warn!("no configuration file to open");
                 return;
             };
-            let ratio = f64::from(percentage) / 100.0;
-            self.send_command(Command::Window(Operation::SetWidth(ratio)));
-        }
-
-        #[unsafe(method(centerWindow:))]
-        fn center_window(&self, _: &NSMenuItem) {
-            self.send_command(Command::Window(Operation::Center));
-        }
-
-        #[unsafe(method(toggleManaged:))]
-        fn toggle_managed(&self, _: &NSMenuItem) {
-            self.send_command(Command::Window(Operation::Manage));
-        }
-
-        #[unsafe(method(copyWindowRule:))]
-        fn copy_window_rule(&self, _: &NSMenuItem) {
-            self.send_command(Command::Window(Operation::CopyRule));
+            // `-t` opens it in the default text editor: `.toml` and `.lua`
+            // often have no app of their own.
+            if let Err(error) = std::process::Command::new("/usr/bin/open")
+                .arg("-t")
+                .arg(&path)
+                .spawn()
+            {
+                warn!(%error, path = %path.display(), "unable to open the configuration file");
+            }
         }
 
         #[unsafe(method(openAccessibilitySettings:))]
@@ -209,12 +199,17 @@ define_class!(
             self.send_command(Command::Quit);
         }
 
-        #[unsafe(method(hideMenuBar:))]
-        fn hide_menu_bar(&self, _: &NSMenuItem) {
-            self.send_command(Command::MenuBar(false));
-        }
     }
 );
+
+/// The file fih takes its configuration from: the TOML file, or the Lua
+/// script when one is in charge.
+fn config_file() -> Option<PathBuf> {
+    let toml = crate::config::CONFIGURATION_FILE.clone();
+    #[cfg(feature = "lua")]
+    let toml = toml.or_else(crate::config::discover_lua_file);
+    toml
+}
 
 impl MenuActionTarget {
     fn new(mtm: MainThreadMarker, events: EventSender) -> Retained<Self> {
@@ -243,37 +238,15 @@ pub struct MenuBarManager {
     status_item: Retained<NSStatusItem>,
     menu: Retained<NSMenu>,
     action_target: Retained<MenuActionTarget>,
-    width_items: Vec<(i32, Retained<NSMenuItem>)>,
-    managed_window_items: Vec<Retained<NSMenuItem>>,
-    manage_item: Option<Retained<NSMenuItem>>,
-    copy_rule_item: Option<Retained<NSMenuItem>>,
-    configured_widths: Vec<i32>,
+    menu_built: bool,
     current_content: Option<MenuBarContent>,
     visible: bool,
-    current_enablement: Option<WindowMenuEnablement>,
-    selected_widths: Option<Vec<i32>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum MenuBarContent {
     Text(String),
     Workspaces { current: Option<u32>, all: Vec<u32> },
-}
-
-#[derive(Debug, PartialEq)]
-struct WindowMenuEnablement {
-    managed_actions: bool,
-    toggle_managed: bool,
-}
-
-fn window_menu_enablement(
-    has_focused_window: bool,
-    focused_width_ratio: Option<f64>,
-) -> WindowMenuEnablement {
-    WindowMenuEnablement {
-        managed_actions: focused_width_ratio.is_some(),
-        toggle_managed: has_focused_window,
-    }
 }
 
 impl MenuBarManager {
@@ -303,15 +276,9 @@ impl MenuBarManager {
             status_item,
             menu,
             action_target,
-            width_items: Vec::new(),
-            managed_window_items: Vec::new(),
-            manage_item: None,
-            copy_rule_item: None,
-            configured_widths: Vec::new(),
+            menu_built: false,
             current_content: None,
             visible,
-            current_enablement: None,
-            selected_widths: None,
         }
     }
 
@@ -350,43 +317,9 @@ impl MenuBarManager {
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));
     }
 
-    pub fn update(
-        &mut self,
-        virtual_index: u32,
-        virtual_indices: &[u32],
-        config: &Config,
-        has_focused_window: bool,
-        focused_width_ratio: Option<f64>,
-    ) {
-        let preset_widths = config.preset_column_widths();
-        let widths = normalized_width_percentages(&preset_widths);
-        if self.configured_widths != widths || self.manage_item.is_none() {
-            self.rebuild_menu(&widths);
-        }
-
-        let enablement = window_menu_enablement(has_focused_window, focused_width_ratio);
-        if self.current_enablement.as_ref() != Some(&enablement) {
-            for item in &self.managed_window_items {
-                item.setEnabled(enablement.managed_actions);
-            }
-            if let Some(manage_item) = &self.manage_item {
-                manage_item.setEnabled(enablement.toggle_managed);
-            }
-            if let Some(copy_rule_item) = &self.copy_rule_item {
-                copy_rule_item.setEnabled(enablement.toggle_managed);
-            }
-            self.current_enablement = Some(enablement);
-        }
-        let selected_widths = selected_width_percentages(&widths, focused_width_ratio);
-        if self.selected_widths.as_ref() != Some(&selected_widths) {
-            for (percentage, item) in &self.width_items {
-                item.setState(if selected_widths.contains(percentage) {
-                    NSControlStateValueOn
-                } else {
-                    NSControlStateValueOff
-                });
-            }
-            self.selected_widths = Some(selected_widths);
+    pub fn update(&mut self, virtual_index: u32, virtual_indices: &[u32], config: &Config) {
+        if !self.menu_built {
+            self.rebuild_menu();
         }
 
         let current = config.workspace_menu_status().then_some(virtual_index);
@@ -398,42 +331,21 @@ impl MenuBarManager {
         self.show_workspaces(config, current, all);
     }
 
-    fn rebuild_menu(&mut self, widths: &[i32]) {
+    fn rebuild_menu(&mut self) {
         self.menu.removeAllItems();
-        self.width_items.clear();
-        self.managed_window_items.clear();
-        self.manage_item = None;
-        self.copy_rule_item = None;
 
         let status = self.add_item("fih — Running", None);
         status.setEnabled(false);
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
 
-        let width_header = self.add_item("Window width", None);
-        width_header.setEnabled(false);
-        for &percentage in widths {
-            let item = self.add_item(&format!("{percentage}%"), Some(sel!(setWidth:)));
-            item.setTag(isize::try_from(percentage).expect("width percentage fits in isize"));
-            self.managed_window_items.push(item.clone());
-            self.width_items.push((percentage, item));
+        let open_config = self.add_item("Open Config File…", Some(sel!(openConfig:)));
+        if let Some(path) = config_file() {
+            open_config.setToolTip(Some(&NSString::from_str(&path.display().to_string())));
         }
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
-        let center = self.add_item("Center Window", Some(sel!(centerWindow:)));
-        let manage = self.add_item("Toggle Managed", Some(sel!(toggleManaged:)));
-        self.managed_window_items.push(center);
-        self.manage_item = Some(manage);
-
-        self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
-        self.copy_rule_item = Some(self.add_item("Copy Window Rule", Some(sel!(copyWindowRule:))));
-
-        self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
-        let hide = self.add_item("Hide Menu Bar", Some(sel!(hideMenuBar:)));
-        hide.setToolTip(Some(&NSString::from_str("Show again with: fih showmenu")));
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));
-        self.configured_widths = widths.to_vec();
-        self.current_enablement = None;
-        self.selected_widths = None;
+        self.menu_built = true;
     }
 
     fn add_item(&self, title: &str, action: Option<objc2::runtime::Sel>) -> Retained<NSMenuItem> {
@@ -785,65 +697,24 @@ impl Drop for MenuBarManager {
     }
 }
 
-type FocusedMenuChanges = (
-    With<FocusedMarker>,
-    Or<(Added<FocusedMarker>, Changed<Bounds>, Changed<Unmanaged>)>,
-);
-
 /// Position-only animation and swipe frames do not affect menu content.
 pub(crate) fn menu_bar_dirty(
     strip_changed: Query<(), (With<ActiveWorkspaceMarker>, Changed<LayoutStrip>)>,
-    focus_changed: Query<(), FocusedMenuChanges>,
     workspace_changed: Query<(), Added<ActiveWorkspaceMarker>>,
     strips_added: Query<(), Added<LayoutStrip>>,
-    mut focus_lost: RemovedComponents<FocusedMarker>,
-    mut unmanaged_removed: RemovedComponents<Unmanaged>,
     mut strips_removed: RemovedComponents<LayoutStrip>,
 ) -> bool {
-    // Drain every removal reader even when another input already dirtied us.
-    let focus_lost = focus_lost.read().count() > 0;
-    let unmanaged_removed = unmanaged_removed.read().count() > 0;
+    // Drain the removal reader even when another input already dirtied us.
     let strips_removed = strips_removed.read().count() > 0;
     !strip_changed.is_empty()
-        || !focus_changed.is_empty()
         || !workspace_changed.is_empty()
         || !strips_added.is_empty()
-        || focus_lost
-        || unmanaged_removed
         || strips_removed
-}
-
-type MenuViewportChanges = (
-    With<ActiveDisplayMarker>,
-    Or<(
-        Added<ActiveDisplayMarker>,
-        Changed<Display>,
-        Changed<DockPosition>,
-    )>,
-);
-
-pub(crate) fn menu_viewport_dirty(
-    display_changed: Query<(), MenuViewportChanges>,
-    mut dock_removed: RemovedComponents<DockPosition>,
-) -> bool {
-    let dock_removed = dock_removed.read().count() > 0;
-    !display_changed.is_empty() || dock_removed
-}
-
-fn selected_width_percentages(widths: &[i32], ratio: Option<f64>) -> Vec<i32> {
-    widths
-        .iter()
-        .copied()
-        .filter(|percentage| {
-            ratio.is_some_and(|ratio| ratio.mul_add(100.0, -f64::from(*percentage)).abs() < 1.0)
-        })
-        .collect()
 }
 
 pub fn update_menu_bar(
     active_display: ActiveDisplay,
     workspaces: Query<&LayoutStrip>,
-    focused: Query<(&Bounds, Has<Unmanaged>), With<FocusedMarker>>,
     config: Res<Config>,
     visibility: Res<MenuBarVisibility>,
     menu_bar: Option<NonSendMut<MenuBarManager>>,
@@ -867,20 +738,8 @@ pub fn update_menu_bar(
         .collect::<Vec<_>>();
     virtual_indices.sort_unstable();
     virtual_indices.dedup();
-    let viewport = active_display.actual_bounds(&config);
 
-    let focused_window = focused.iter().next();
-    let focused_width_ratio = focused_window.and_then(|(bounds, unmanaged)| {
-        (!unmanaged).then(|| f64::from(bounds.0.x) / f64::from(viewport.width()))
-    });
-
-    menu_bar.update(
-        strip.virtual_index,
-        &virtual_indices,
-        &config,
-        focused_window.is_some(),
-        focused_width_ratio,
-    );
+    menu_bar.update(strip.virtual_index, &virtual_indices, &config);
 }
 
 pub(crate) fn virtual_workspace_label(virtual_index: u32) -> String {
@@ -980,25 +839,11 @@ fn bitmap_rep(bounds: CGRect, scale: CGFloat) -> Option<Retained<NSBitmapImageRe
     Some(rep)
 }
 
-fn normalized_width_percentages(widths: &[f64]) -> Vec<i32> {
-    let mut percentages = widths
-        .iter()
-        .copied()
-        .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
-        .map(|ratio| round_px(ratio.mul_add(100.0, 0.0)))
-        .filter(|percentage| *percentage > 0)
-        .collect::<Vec<_>>();
-    percentages.sort_unstable();
-    percentages.dedup();
-    percentages
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         Command, Config, Event, IndicatorFormat, MenuBarPreferenceFile, MenuBarVisibility,
-        WindowMenuEnablement, indicator_label, normalized_width_percentages, paged_last_index,
-        roman_numeral, virtual_workspace_label, window_menu_enablement,
+        indicator_label, paged_last_index, roman_numeral, virtual_workspace_label,
     };
 
     #[test]
@@ -1121,9 +966,9 @@ mod tests {
     }
 
     #[test]
-    fn menu_updates_ignore_position_animation_but_track_menu_inputs() {
+    fn menu_updates_ignore_position_animation_but_track_workspaces() {
         use crate::ecs::layout::LayoutStrip;
-        use crate::ecs::{ActiveWorkspaceMarker, Bounds, FocusedMarker, Position, Unmanaged};
+        use crate::ecs::{ActiveWorkspaceMarker, Bounds, FocusedMarker, Position};
         use bevy::app::{App, PostUpdate};
         use bevy::ecs::{resource::Resource, schedule::IntoScheduleConfigs, system::ResMut};
         use bevy::math::IVec2;
@@ -1154,41 +999,25 @@ mod tests {
             app.world_mut().get_mut::<Position>(window).unwrap().0.x = x;
             app.update();
         }
-        assert_eq!(app.world().resource::<Updates>().0, 1);
+        // Window size and focus no longer show in the menu.
         app.world_mut().get_mut::<Bounds>(window).unwrap().0.x = 500;
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 2);
-        app.world_mut()
-            .entity_mut(window)
-            .insert(Unmanaged::Floating);
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 3);
-        app.world_mut().entity_mut(window).remove::<Unmanaged>();
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 4);
         app.world_mut().entity_mut(window).remove::<FocusedMarker>();
         app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 5);
-        app.world_mut().get_mut::<Bounds>(window).unwrap().0.x = 600;
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 5);
-        app.world_mut().entity_mut(window).insert(FocusedMarker);
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 6);
+        assert_eq!(app.world().resource::<Updates>().0, 1);
         app.world_mut()
             .get_mut::<LayoutStrip>(strip)
             .unwrap()
             .virtual_index = 1;
         app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 7);
+        assert_eq!(app.world().resource::<Updates>().0, 2);
         let offscreen = app.world_mut().spawn(LayoutStrip::new(1, 2)).id();
         app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 8);
+        assert_eq!(app.world().resource::<Updates>().0, 3);
         app.world_mut().despawn(offscreen);
         app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 9);
+        assert_eq!(app.world().resource::<Updates>().0, 4);
         app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 9);
+        assert_eq!(app.world().resource::<Updates>().0, 4);
     }
 
     #[test]
@@ -1217,68 +1046,6 @@ mod tests {
             !world
                 .resource::<MenuBarVisibility>()
                 .enabled(world.resource::<Config>())
-        );
-    }
-
-    #[test]
-    fn menu_width_state_tracks_display_and_dock_changes() {
-        use crate::ecs::{ActiveDisplayMarker, DockPosition};
-        use crate::manager::Display;
-        use bevy::app::{App, PostUpdate};
-        use bevy::ecs::{resource::Resource, schedule::IntoScheduleConfigs, system::ResMut};
-        use bevy::math::IRect;
-
-        #[derive(Resource, Default)]
-        struct Updates(usize);
-        fn count(mut updates: ResMut<Updates>) {
-            updates.0 += 1;
-        }
-        let mut app = App::new();
-        app.init_resource::<Updates>()
-            .add_systems(PostUpdate, count.run_if(super::menu_viewport_dirty));
-        let display = app
-            .world_mut()
-            .spawn((
-                Display::new(1, IRect::new(0, 0, 1024, 768), 20),
-                ActiveDisplayMarker,
-            ))
-            .id();
-        app.update();
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 1);
-        app.world_mut()
-            .entity_mut(display)
-            .insert(DockPosition::Left(50));
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 2);
-        app.world_mut().entity_mut(display).remove::<DockPosition>();
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 3);
-        app.world_mut()
-            .get_mut::<Display>(display)
-            .unwrap()
-            .set_menubar_height_override(Some(30));
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 4);
-        app.update();
-        assert_eq!(app.world().resource::<Updates>().0, 4);
-    }
-
-    #[test]
-    fn width_selection_keeps_the_existing_tolerance() {
-        let widths = [33, 34, 50, 67];
-        assert_eq!(
-            super::selected_width_percentages(&widths, Some(0.33333)),
-            [33, 34]
-        );
-        assert_eq!(
-            super::selected_width_percentages(&widths, Some(0.335)),
-            [33, 34]
-        );
-        assert_eq!(super::selected_width_percentages(&widths, Some(0.5)), [50]);
-        assert_eq!(
-            super::selected_width_percentages(&widths, None),
-            Vec::<i32>::new()
         );
     }
 
@@ -1361,38 +1128,5 @@ mod tests {
         assert_eq!(roman_numeral(49), "XLIX");
         assert_eq!(roman_numeral(50), "L");
         assert_eq!(roman_numeral(89), "LXXXIX");
-    }
-
-    #[test]
-    fn menu_widths_are_sorted_deduplicated_and_valid() {
-        assert_eq!(
-            normalized_width_percentages(&[2.0, 0.5, 1.5, 0.5, 0.001, f64::NAN, -1.0]),
-            vec![50, 150, 200]
-        );
-    }
-
-    #[test]
-    fn unmanaged_focus_only_enables_toggle_managed() {
-        assert_eq!(
-            window_menu_enablement(true, None),
-            WindowMenuEnablement {
-                managed_actions: false,
-                toggle_managed: true,
-            }
-        );
-        assert_eq!(
-            window_menu_enablement(false, None),
-            WindowMenuEnablement {
-                managed_actions: false,
-                toggle_managed: false,
-            }
-        );
-        assert_eq!(
-            window_menu_enablement(true, Some(1.0)),
-            WindowMenuEnablement {
-                managed_actions: true,
-                toggle_managed: true,
-            }
-        );
     }
 }

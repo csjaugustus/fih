@@ -133,6 +133,26 @@ workspace_menu_status = false
 workspace_popup_status = true
 ```
 
+### `[decorations.minimap]`
+
+A row of app icons along the bottom of the screen, one icon-sized tile per column of the current strip, with the part that is on screen outlined and the focused column highlighted. It comes up briefly whenever a window command (focus, swap, resize, workspace switch, ...) or a swipe moves around the strip, and stays up while toggled on with `strip_show`. While the minimap is up, workspace and pin messages appear just above it.
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `enabled` | Boolean | `false` | Show the minimap briefly while navigating. |
+| `interactive` | Boolean | `true` | Clicking an icon focuses that column's window. |
+| `duration` | Float (seconds) | `1.0` | How long the minimap stays up after the last navigation. |
+
+**Example:**
+```toml
+[decorations.minimap]
+enabled = true
+duration = 1.5
+
+[bindings]
+strip_show = "ctrl + alt - s"
+```
+
 ### `[decorations.menu]`
 
 Basic settings for the menubar display.
@@ -159,13 +179,15 @@ paneru.setup {
 }
 ```
 
-You can also click **Hide Menu Bar** in fih's menu. This choice is saved across restarts and overrides `enabled`. To show the item again:
+You can also hide it with `fih hidemenu`. This choice is saved across restarts and overrides `enabled`. To show the item again:
 
 ```sh
 fih showmenu
 ```
 
 This command shows the item in the running daemon and remembers the new choice. Lua scripts can use `paneru.showmenu()` and `paneru.hidemenu()`, or bind `showmenu` and `hidemenu` to keys. Choices are stored in `$XDG_STATE_HOME/paneru/menu-bar.json` (normally `~/.local/state/fih/menu-bar.json`); removing this file while fih is stopped restores the configuration's behavior.
+
+The menu itself has **Open Config File…**, which opens the configuration fih is using (`fih.toml`, or `init.lua` when a script is in charge) in your default text editor, and **Quit fih**.
 
 The permission setup menu remains visible until the required macOS access is granted.
 
@@ -268,6 +290,7 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_copyrule` | Copy a window rule template for the focused window to the clipboard. |
 | `showmenu` | Show the fih menu bar item and remember the choice across restarts. |
 | `hidemenu` | Hide the entire fih menu bar item and remember the choice across restarts. |
+| `strip_show` | Show the [strip minimap](#decorationsminimap) until pressed again. Works whether or not `[decorations.minimap] enabled` is set. |
 | `quit` | Exit Paneru. |
 | `restart` | Restart the fih service (`fih restart`). |
 
@@ -401,9 +424,8 @@ floating = true
 ### Copying a window rule
 
 Neither the bundle ID nor the exact window title is visible anywhere in the UI,
-so the fih menu bar has a **Copy Window Rule** entry. You can also trigger it
-via a keybinding (e.g., `window_copyrule = "ctrl + alt - c"`) or run it from the
-command line (`paneru window copyrule`). It puts a rule for the currently focused
+so fih can write the rule for you. Trigger it via a keybinding (e.g.,
+`window_copyrule = "ctrl + alt - c"`) or run it from the command line (`paneru window copyrule`). It puts a rule for the currently focused
 window on the clipboard, ready to paste:
 
 ```toml

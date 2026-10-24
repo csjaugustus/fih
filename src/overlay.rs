@@ -182,7 +182,7 @@ fn cg_abs_to_cocoa(frame: NSRect, primary_screen_height: f64) -> NSRect {
 /// so it must be *that* screen — `NSScreen::screens()[0]` is NOT reliably the
 /// main display, and using the wrong one offsets the overlay (and, when
 /// displays are stacked, lands it on the wrong monitor).
-fn primary_screen_height(mtm: MainThreadMarker) -> f64 {
+pub(crate) fn primary_screen_height(mtm: MainThreadMarker) -> f64 {
     let screens = NSScreen::screens(mtm);
     let mut fallback = 0.0;
     let mut first = true;
@@ -348,6 +348,19 @@ impl OverlayManager {
 
 // ── FlashMessage ────────────────────────────────────────────────────────
 
+/// Side of the square badge used for short (1-2 character) messages, such as
+/// a workspace number.
+const BADGE_SIZE: f64 = 48.0;
+const BADGE_RADIUS: f64 = 12.0;
+/// Height and font of the pill used for longer messages ("Pinned left").
+const TEXT_HEIGHT: f64 = 34.0;
+const TEXT_FONT_SIZE: f64 = 15.0;
+const TEXT_PADDING: f64 = 16.0;
+const TEXT_MIN_WIDTH: f64 = 80.0;
+const TEXT_MAX_WIDTH: f64 = 480.0;
+/// Gap between the message and the bottom of the usable screen area.
+const BOTTOM_MARGIN: f64 = 24.0;
+
 #[derive(Debug, Clone)]
 struct FlashMessageViewIvars {
     opacity: f32,
@@ -377,7 +390,7 @@ define_class!(
             );
             bezel_color.setFill();
             let radius = if is_badge {
-                24.0
+                BADGE_RADIUS
             } else {
                 bounds.size.height / 2.0
             };
@@ -397,9 +410,9 @@ define_class!(
 
             // 2. Draw text
             let font = if is_badge {
-                NSFont::boldSystemFontOfSize(bounds.size.height * 0.62)
+                NSFont::boldSystemFontOfSize(bounds.size.height * 0.55)
             } else {
-                NSFont::systemFontOfSize(30.0)
+                NSFont::systemFontOfSize(TEXT_FONT_SIZE)
             };
             let color = NSColor::colorWithSRGBRed_green_blue_alpha(
                 1.0, 1.0, 1.0,
@@ -441,7 +454,7 @@ define_class!(
                     text_size,
                 )
             } else {
-                let h_pad = 24.0;
+                let h_pad = TEXT_PADDING;
                 let available_width = (bounds.size.width - (2.0 * h_pad)).max(1.0);
                 NSRect::new(
                     NSPoint::new(
@@ -487,14 +500,16 @@ impl FlashMessageManager {
     }
 
     #[allow(clippy::cast_precision_loss)]
-    pub fn show(&mut self, message: &str, opacity: f32, top_right_abs_cg: NSPoint) {
+    /// Shows `message` centred on `bottom_center_abs_cg` (absolute CG coords),
+    /// sitting just above that point.
+    pub fn show(&mut self, message: &str, opacity: f32, bottom_center_abs_cg: NSPoint) {
         let is_badge = message.chars().count() <= 2;
         let screen_h = primary_screen_height(self.mtm);
 
         let size = if is_badge {
-            NSSize::new(150.0, 150.0)
+            NSSize::new(BADGE_SIZE, BADGE_SIZE)
         } else {
-            let font = NSFont::systemFontOfSize(30.0);
+            let font = NSFont::systemFontOfSize(TEXT_FONT_SIZE);
             let font_key = NSString::from_str("NSFont");
             let keys = [&*font_key];
             let objects = [&*font as &AnyObject];
@@ -505,17 +520,13 @@ impl FlashMessageManager {
                 msg_send![alloc, initWithString: &*msg_ns, attributes: &*attributes]
             };
             let text_size: NSSize = unsafe { msg_send![&attr_str, size] };
-            let horizontal_padding = 48.0;
-            let max_width = 780.0;
-            let min_width = 140.0;
-            let width = (text_size.width + horizontal_padding).clamp(min_width, max_width);
-            NSSize::new(width, 64.0)
+            let width =
+                (text_size.width + 2.0 * TEXT_PADDING).clamp(TEXT_MIN_WIDTH, TEXT_MAX_WIDTH);
+            NSSize::new(width, TEXT_HEIGHT)
         };
 
-        let padding = 20.0;
-
-        let cocoa_origin_x = top_right_abs_cg.x - size.width - padding;
-        let cocoa_origin_y = screen_h - (top_right_abs_cg.y + size.height + padding);
+        let cocoa_origin_x = bottom_center_abs_cg.x - size.width / 2.0;
+        let cocoa_origin_y = screen_h - bottom_center_abs_cg.y + BOTTOM_MARGIN;
 
         let frame = NSRect::new(NSPoint::new(cocoa_origin_x, cocoa_origin_y), size);
 

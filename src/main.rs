@@ -20,6 +20,7 @@ mod events;
 mod lua;
 mod manager;
 mod menubar;
+mod minimap;
 mod overlay;
 mod pasteboard;
 mod platform;

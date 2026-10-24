@@ -28,15 +28,16 @@ use crate::ecs::display::FloatingLayer;
 use crate::ecs::layout::{Column, LayoutStrip};
 use crate::ecs::params::{ActiveDisplay, FrameActivity, Windows};
 use crate::ecs::{
-    ActiveWorkspaceMarker, Bounds, BruteforceWindows, FlashMessage, FocusedMarker, Initializing,
-    LowPowerMode, MissionControlActive, Position, ReadDisplayProperties, RestoreWindowState,
-    Scrolling, SendMessageTrigger, SpawnCommandsExt, SystemTheme, Unmanaged, WidthRatio,
-    WindowProperties,
+    ActiveWorkspaceMarker, Bounds, BruteforceWindows, DockPosition, FlashMessage, FocusedMarker,
+    Initializing, LowPowerMode, MissionControlActive, Position, ReadDisplayProperties,
+    RestoreWindowState, Scrolling, SendMessageTrigger, SpawnCommandsExt, SystemTheme, Unmanaged,
+    WidthRatio, WindowProperties,
 };
 use crate::events::{Event, InputEvent};
 use crate::manager::{
     Application, Display, Process, Window, WindowManager, WindowOS, bruteforce_windows,
 };
+use crate::minimap::{MINIMAP_BOTTOM_MARGIN, MINIMAP_HEIGHT, MinimapState};
 use crate::overlay::{FlashMessageManager, OverlayManager};
 use crate::platform::input::TapHealth;
 use crate::platform::{PlatformCallbacks, WinID};
@@ -1225,8 +1226,10 @@ pub(super) fn cleanup_on_exit(
 
 pub(crate) fn update_flash_messages(
     messages: Populated<(Entity, &FlashMessage, &Timeout)>,
-    active_display: Single<(&Display, Entity), With<ActiveDisplayMarker>>,
+    active_display: Single<(&Display, Option<&DockPosition>), With<ActiveDisplayMarker>>,
     flash_mgr: Option<NonSendMut<FlashMessageManager>>,
+    config: Res<Config>,
+    minimap: Res<MinimapState>,
     mut commands: Commands,
 ) {
     let Some(mut flash_manager) = flash_mgr else {
@@ -1238,9 +1241,19 @@ pub(crate) fn update_flash_messages(
         return;
     }
 
-    let (display, _) = *active_display;
-    let bounds = display.bounds();
-    let top_right = NSPoint::new(f64::from(bounds.max.x), f64::from(bounds.min.y));
+    // Centred along the bottom edge, clear of the Dock.
+    let (display, dock) = *active_display;
+    let bounds = display.edge_bounds(dock, &config);
+    // Sit above the minimap rather than on top of it.
+    let lift = if minimap.visible() {
+        MINIMAP_HEIGHT + MINIMAP_BOTTOM_MARGIN / 2.0
+    } else {
+        0.0
+    };
+    let bottom_center = NSPoint::new(
+        f64::from(bounds.min.x + bounds.max.x) / 2.0,
+        f64::from(bounds.max.y) - lift,
+    );
 
     // When several FlashMessages coexist (rapid keypresses spawn a fresh
     // one per workspace switch before the previous timer expires), the
@@ -1278,7 +1291,7 @@ pub(crate) fn update_flash_messages(
 
     if let Some((_, flash, timeout)) = alive {
         let opacity = timeout.timer.fraction_remaining();
-        flash_manager.show(flash, opacity, top_right);
+        flash_manager.show(flash, opacity, bottom_center);
     } else {
         flash_manager.remove();
     }
