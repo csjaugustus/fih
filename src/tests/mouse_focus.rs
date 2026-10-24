@@ -424,3 +424,57 @@ fn keyboard_focus_keeps_the_pointer_relative_place() {
             },
         ]);
 }
+
+/// The pointer keeps its relative place even when the new window starts off
+/// screen and has to slide into view first.
+#[test]
+fn keyboard_focus_keeps_the_pointer_place_in_an_off_screen_window() {
+    let config: Config = (
+        MainOptions {
+            mouse_follows_focus: Some(true),
+            focus_follows_mouse: Some(false),
+            auto_center: Some(false),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(5)
+        .on_iteration(1, |world, state| {
+            let mut focused = world
+                .query_filtered::<&Window, bevy::ecs::query::With<crate::ecs::FocusedMarker>>();
+            let frame = focused.single(world).expect("a focused window").frame();
+            state.set_cursor_position(
+                frame.min + Origin::new(frame.width() / 4, frame.height() * 3 / 4),
+            );
+        })
+        .on_iteration(3, |world, state| {
+            assert_focused!(world, 4);
+            let mut focused = world
+                .query_filtered::<&Window, bevy::ecs::query::With<crate::ecs::FocusedMarker>>();
+            let frame = focused.single(world).expect("a focused window").frame();
+            let cursor = state.cursor_position();
+            let across = f64::from(cursor.x - frame.min.x) / f64::from(frame.width());
+            let down = f64::from(cursor.y - frame.min.y) / f64::from(frame.height());
+            assert!(
+                (across - 0.25).abs() < 0.03 && (down - 0.75).abs() < 0.03,
+                "pointer {cursor:?} should sit a quarter across, three quarters down {frame:?}"
+            );
+        })
+        .run(vec![
+            Event::Command {
+                command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::Focus(Direction::First)),
+            },
+            Event::Command {
+                command: Command::Window(Operation::Focus(Direction::Last)),
+            },
+            Event::Command {
+                command: Command::PrintState,
+            },
+        ]);
+}

@@ -11,7 +11,7 @@ use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs as _;
-use bevy::ecs::system::{Commands, Local, NonSend, Populated, Query, Res, ResMut, Single};
+use bevy::ecs::system::{Commands, NonSend, Populated, Query, Res, ResMut, Single};
 use bevy::math::IRect;
 use bevy::prelude::Event as BevyEvent;
 use bevy::time::Time;
@@ -117,12 +117,16 @@ pub(crate) struct PageHapticRequest;
 impl Plugin for FocusEventsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FocusHistory>();
+        app.init_resource::<PointerPlace>();
         app.add_message::<PageHapticRequest>();
         app.add_systems(
             Update,
             (
                 detect_focus_rejection.in_set(super::UpdateSet::Events),
                 fix_window_size_on_focus.in_set(super::UpdateSet::Focus),
+                record_pointer_place
+                    .in_set(super::UpdateSet::Layout)
+                    .before(super::layout::layout_strip_changed),
                 autocenter_window_on_focus
                     .in_set(super::UpdateSet::Layout)
                     .after(super::layout::layout_strip_changed)
@@ -530,14 +534,15 @@ fn mouse_follows_focus(
     displays: Query<&Display>,
     workspaces: MouseFocusStrips,
     restored: Query<&RestoreFocusMarker>,
-    mut previous: Local<Option<Entity>>,
+    mut place: ResMut<PointerPlace>,
 ) {
     let entity = *focused;
-    // The window focus came from, where the pointer's place is read from.
-    let from = previous
-        .replace(entity)
-        .filter(|previous| *previous != entity)
-        .and_then(|previous| windows.frame(previous));
+    // Where on its window the pointer was before the strip started moving.
+    let fraction = place
+        .0
+        .take()
+        .filter(|(focused, _)| *focused == entity)
+        .and_then(|(_, fraction)| fraction);
     let Some(window) = windows.get(entity) else {
         return;
     };
@@ -563,6 +568,7 @@ fn mouse_follows_focus(
         .frame(entity)
         .zip(pointer)
         .is_some_and(|(frame, pointer)| frame.contains(pointer));
+
     if config.mouse_follows_focus()
         && !pointer_on_window
         && !global_state.skip_reshuffle()
@@ -586,11 +592,14 @@ fn mouse_follows_focus(
         } else {
             frame
         };
+        // A window off screen is about to slide into view; aim at where it
+        // will be, not at the sliver showing now.
+        let frame = settle_into_view(frame, display.bounds());
         let visible = display.bounds().intersect(frame);
         if visible.size().length_squared() > 5000 {
             let origin = pointer.map_or_else(
                 || visible.center(),
-                |pointer| follow_pointer(pointer, from, frame, visible),
+                |pointer| follow_pointer(pointer, fraction, frame, visible),
             );
             debug!("moving the pointer to {} {origin}", window.id());
             window_manager.warp_mouse(origin);
@@ -598,28 +607,86 @@ fn mouse_follows_focus(
     }
 }
 
+/// Where `frame` comes to rest once the strip slides it into `viewport`: just
+/// far enough to be fully visible, flush with the edge it came in from, the
+/// way focusing a window off screen brings it into view. A window wider than
+/// the viewport lines up with its left edge.
+pub(crate) fn settle_into_view(frame: IRect, viewport: IRect) -> IRect {
+    let shift = if frame.width() >= viewport.width() || frame.min.x < viewport.min.x {
+        viewport.min.x - frame.min.x
+    } else if frame.max.x > viewport.max.x {
+        viewport.max.x - frame.max.x
+    } else {
+        0
+    };
+    IRect::from_corners(
+        frame.min + Origin::new(shift, 0),
+        frame.max + Origin::new(shift, 0),
+    )
+}
+
+/// Where on a window the pointer was when focus moved to another one, as
+/// fractions of its width and height, recorded before the strip starts to
+/// slide; `None` when it was on no window.
+#[derive(Debug, Default, Resource)]
+pub struct PointerPlace(Option<(Entity, Option<(f64, f64)>)>);
+
+/// Records where on its window the pointer is as focus moves, while every
+/// window is still where the user last saw it.
+fn record_pointer_place(
+    focused: Single<Entity, Added<FocusedMarker>>,
+    windows: Windows,
+    workspaces: MouseFocusStrips,
+    window_manager: Res<WindowManager>,
+    config: Res<Config>,
+    mut place: ResMut<PointerPlace>,
+) {
+    if !config.mouse_follows_focus() {
+        return;
+    }
+    let entity = *focused;
+    let pointer = window_manager.cursor_position().map(origin_from);
+    let fraction = pointer.and_then(|pointer| {
+        workspaces
+            .iter()
+            .filter(|(_, _, _, active, _, _)| *active)
+            .flat_map(|(strip, _, _, _, _, _)| strip.all_windows())
+            .filter(|other| *other != entity)
+            .filter_map(|other| windows.frame(other))
+            .find_map(|frame| place_on(pointer, frame))
+    });
+    place.0 = Some((entity, fraction));
+}
+
+/// Where `pointer` is on `frame`, as fractions of its width and height, if
+/// it is on it at all.
+pub(crate) fn place_on(pointer: Origin, frame: IRect) -> Option<(f64, f64)> {
+    (frame.contains(pointer) && frame.width() > 0 && frame.height() > 0).then(|| {
+        (
+            f64::from(pointer.x - frame.min.x) / f64::from(frame.width()),
+            f64::from(pointer.y - frame.min.y) / f64::from(frame.height()),
+        )
+    })
+}
+
 /// Where the pointer goes when focus moves to a window at `to`, of which
-/// `visible` is on screen. A pointer on the window focus came from (`from`)
-/// keeps its place relative to it - a third of the way across stays a third
-/// of the way across - and anywhere else it moves just far enough to be on
-/// the new window. Either way it lands on the visible part.
+/// `visible` is on screen. A pointer that was on a window (at `fraction` of
+/// it) keeps that place on the new one - a third of the way across stays a
+/// third of the way across - and anywhere else it moves just far enough to
+/// be on the new window. Either way it lands on the visible part.
 pub(crate) fn follow_pointer(
     pointer: Origin,
-    from: Option<IRect>,
+    fraction: Option<(f64, f64)>,
     to: IRect,
     visible: IRect,
 ) -> Origin {
     // A pixel in from the edge, so the pointer is on the window, not its border.
     const INSET: i32 = 1;
-    let target = match from.filter(|from| from.contains(pointer) && from.width() > 0) {
-        Some(from) => {
-            let fraction_x = f64::from(pointer.x - from.min.x) / f64::from(from.width());
-            let fraction_y = f64::from(pointer.y - from.min.y) / f64::from(from.height().max(1));
-            Origin::new(
-                to.min.x + round_px(fraction_x * f64::from(to.width())),
-                to.min.y + round_px(fraction_y * f64::from(to.height())),
-            )
-        }
+    let target = match fraction {
+        Some((across, down)) => Origin::new(
+            to.min.x + round_px(across * f64::from(to.width())),
+            to.min.y + round_px(down * f64::from(to.height())),
+        ),
         None => pointer,
     };
     let max = (visible.max - Origin::splat(INSET)).max(visible.min);
@@ -999,7 +1066,7 @@ mod tests {
 mod follow_pointer_tests {
     use bevy::math::IRect;
 
-    use super::follow_pointer;
+    use super::{follow_pointer, place_on};
     use crate::manager::Origin;
 
     const SCREEN: IRect = IRect {
@@ -1013,7 +1080,12 @@ mod follow_pointer_tests {
         let to = IRect::new(1000, 0, 2000, 1000);
         // 30% across, 70% down stays 30% across, 70% down.
         assert_eq!(
-            follow_pointer(Origin::new(300, 700), Some(from), to, SCREEN),
+            follow_pointer(
+                Origin::new(300, 700),
+                place_on(Origin::new(300, 700), from),
+                to,
+                SCREEN
+            ),
             Origin::new(1300, 700)
         );
     }
@@ -1024,7 +1096,12 @@ mod follow_pointer_tests {
         let to = IRect::new(500, 0, 1500, 1000);
         // Half way across a narrow window is half way across a wide one.
         assert_eq!(
-            follow_pointer(Origin::new(250, 500), Some(from), to, SCREEN),
+            follow_pointer(
+                Origin::new(250, 500),
+                place_on(Origin::new(250, 500), from),
+                to,
+                SCREEN
+            ),
             Origin::new(1000, 500)
         );
     }
@@ -1036,7 +1113,12 @@ mod follow_pointer_tests {
         let visible = SCREEN.intersect(to);
         // In the gap between the two: one step right, onto the new window.
         assert_eq!(
-            follow_pointer(Origin::new(995, 400), Some(from), to, visible),
+            follow_pointer(
+                Origin::new(995, 400),
+                place_on(Origin::new(995, 400), from),
+                to,
+                visible
+            ),
             Origin::new(1001, 400)
         );
         // Already level with it vertically, nothing else changes.
@@ -1047,12 +1129,52 @@ mod follow_pointer_tests {
     }
 
     #[test]
+    fn a_window_off_screen_settles_flush_with_the_edge_it_comes_from() {
+        let screen = IRect::new(0, 0, 2000, 1000);
+        // Off to the right: comes in flush with the right edge.
+        assert_eq!(
+            super::settle_into_view(IRect::new(2500, 0, 3500, 1000), screen),
+            IRect::new(1000, 0, 2000, 1000)
+        );
+        // Off to the left: flush with the left edge.
+        assert_eq!(
+            super::settle_into_view(IRect::new(-1500, 0, -500, 1000), screen),
+            IRect::new(0, 0, 1000, 1000)
+        );
+        // Already in view: stays put.
+        assert_eq!(
+            super::settle_into_view(IRect::new(500, 0, 1500, 1000), screen),
+            IRect::new(500, 0, 1500, 1000)
+        );
+    }
+
+    #[test]
+    fn keeps_the_pointer_place_in_a_window_coming_from_off_screen() {
+        let from = IRect::new(0, 0, 1000, 1000);
+        let to = super::settle_into_view(IRect::new(2500, 0, 3500, 1000), SCREEN);
+        assert_eq!(
+            follow_pointer(
+                Origin::new(300, 700),
+                place_on(Origin::new(300, 700), from),
+                to,
+                SCREEN.intersect(to)
+            ),
+            Origin::new(1300, 700)
+        );
+    }
+
+    #[test]
     fn lands_on_the_visible_part_of_the_window() {
         let from = IRect::new(0, 0, 1000, 1000);
         // Mostly off the right edge of the screen.
         let to = IRect::new(1800, 0, 2800, 1000);
         let visible = SCREEN.intersect(to);
-        let landed = follow_pointer(Origin::new(500, 500), Some(from), to, visible);
+        let landed = follow_pointer(
+            Origin::new(500, 500),
+            place_on(Origin::new(500, 500), from),
+            to,
+            visible,
+        );
         assert!(visible.contains(landed), "{landed:?} should be on screen");
         assert_eq!(landed.y, 500);
     }
