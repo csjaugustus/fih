@@ -25,7 +25,7 @@
 
 Window sit side by side on strip. Strip go right forever. Screen is little hole you look through. Swipe four finger or press key, strip slide. Window you want slide into hole.
 
-Fih not only go side to side. Fih go up and down too. Strip stack on strip, one per workspace: code strip, chat strip, play strip. ⌃⌥ ↑ ↓ jump to next strip with window in it. Empty one? Fih skip. No new one made by accident. Is like many monitor, but monitor stack in air and cost zero.
+Left right = slide in workspace. Up down = switch workspace. Each workspace own strip. Is like many monitor, but cost zero.
 
 Need one window always there? Pin it. It hold left or right half. Rest of strip slide in other half.
 
@@ -35,9 +35,7 @@ One window, fih make it fill screen. Open second, both take half. Fih no make yo
 
 Move, little map show at bottom. One icon per window. Teal = where you are. Faded = off screen. Lock = pinned. Number at left = which workspace.
 
-Switch workspace with ⌃⌥ ↑ ↓, map show all workspace that have window. One row per workspace, 1 on top. Row you on now get teal box. Other row faded.
-
-Click icon in map, fih go to that window.
+Switch workspace, map show all workspace, one row each. Click icon, fih go there.
 
 ## Get
 
