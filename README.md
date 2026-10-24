@@ -5,61 +5,67 @@
   <img src="images/fih-horizontal-black.svg" alt="fih" width="360">
 </picture>
 
-speedmaxxed sliding, tiling window manager for macos, optimized for single monitor use
-
 # why many monitor when one do trick
 
-**fih put all window in one long strip. Slide strip. Window come fast like fih, no lag. No second monitor. No third. Max focus.**
+**fih put all window in one long strip, slide strip, window come fast like fih, no lag**
+
+**no second monitor, no third, max focus**
 
 </div>
 
 ---
 
-## Why name fih
+## why name fih
 
-One time go oceanarium. See fih swim. Fih fast. Fih bendy. Fih no get distracted. Fih know where going.
+one time go oceanarium, see fih swim
 
-So app tile like fih: fast, smooth, no animation lag. Default zero animation. Window just there.
+fih fast, fih bendy, fih no get distracted, fih know where going
 
-| Many monitor | fih |
+so app tile like fih: fast, smooth, no animation lag, default zero animation, window just there
+
+| many monitor | fih |
 |---|---|
-| Buy monitor. Buy another. Buy arm, dock, cable | One screen. Strip go forever |
-| Turn neck to find window | Window come to you |
-| Open window, other window shrink | Open window, nothing shrink. Strip grow |
-| Unplug laptop, layout explode | Layout no care |
-| Need more room, buy more monitor | Need more room, stack more strip. Free |
+| buy monitor, buy another, buy arm, dock, cable | one screen, strip go forever |
+| turn neck to find window | window come to you |
+| open window, other window shrink | open window, nothing shrink, strip grow |
+| unplug laptop, layout explode | layout no care |
+| need more room, buy more monitor | need more room, stack more strip, free |
 
-## How work
+## how work
 
-Window sit side by side on strip. Strip go right forever. Screen is little hole you look through. Swipe four finger or press key, strip slide. Window you want slide into hole.
+window sit side by side on strip, strip go right forever
 
-Left right = slide in workspace. Up down = switch workspace, go round and round. Each workspace own strip. Is like many monitor, but cost zero.
+screen is little hole you look through, swipe four finger or press key, strip slide, window you want slide into hole
 
-Have laptop and monitor? Workspace on both share one number line. Keyboard go everywhere.
+left right = slide in workspace, up down = switch workspace, go round and round
 
-Need one window always there? Pin it. It hold one column at left or right. Rest of strip slide beside it.
+each workspace own strip, is like many monitor but cost zero
 
-## Strip map
+have laptop and monitor? workspace on both share one number line, keyboard go everywhere
 
-Move, little map show at bottom. One icon per window.
+need one window always there? pin it, it hold one column at left or right, rest of strip slide beside it
 
-Go up down, map show all workspace, one row each.
+## strip map
 
-## Get
+move, little map show at bottom, one icon per window
 
-Ready app go in [Releases](https://github.com/csjaugustus/fih/releases).
+go up down, map show all workspace, one row each
 
-1. Open DMG. Drag fih into Applications.
-2. Open fih. Mac say no, fih not notarized. Go System Settings → Privacy & Security, scroll down, click **Open Anyway**.
-3. Mac ask for Accessibility. Say yes. Fih need it to move window.
+## get
 
-Fih live in menu bar now. Start by itself at login. New version? Replace app, open again.
+ready app go in [releases](https://github.com/csjaugustus/fih/releases)
 
-Or brew: `brew install csjaugustus/fih/fih`, then `fih install && fih start`. Mac ask for Accessibility, say yes. New version? `brew upgrade fih && fih restart`.
+1. open dmg, drag fih into applications
+2. open fih, mac say no because fih not notarized, go system settings → privacy & security, scroll down, click **open anyway**
+3. mac ask for accessibility, say yes, fih need it to move window
 
-How delete: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to Bin.
+fih live in menu bar now, start by itself at login, new version? replace app, open again
 
-### If you nerd want tinker
+or brew: `brew install csjaugustus/fih/fih`, then `fih install && fih start`, mac ask for accessibility, say yes, new version? `brew upgrade fih && fih restart`
+
+how delete: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to bin
+
+### if you nerd want tinker
 
 ```sh
 git clone https://github.com/csjaugustus/fih.git
@@ -68,35 +74,35 @@ cargo run                     # try
 cargo install --path .        # keep
 ```
 
-macOS ask for Accessibility. Say yes (System Settings → Privacy & Security). Fih need it to move window.
+macos ask for accessibility, say yes (system settings → privacy & security), fih need it to move window
 
-Run all time: `fih install && fih start`.
+run all time: `fih install && fih start`
 
-## How control
+## how control
 
-Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
+hold ⌃⌥ (control + option), add ⇧ to move window, not just look
 
-| Key | Do |
+| key | do |
 |---|---|
-| ⌃⌥ ← → | Go to next window. On floating window: put it away, back to strip |
-| ⌃⌥ ↑ ↓ | Go to next workspace with window in it |
-| ⌃⌥⇧ ← → | Move window |
-| ⌥ 1–9 | Go to workspace 1–9. ⇧ = take window there |
-| ⌃⌥ R | One column or full |
-| ⌃⌥ F | Fill screen |
-| ⌃⌥ C | Center |
-| ⌃⌥ P / ⌃⌥⇧ P | Pin left / right. Again = unpin |
-| ⌃⌥ T | Float. Again = back in strip |
-| ⌃⌥ Q | Quit |
+| ⌃⌥ ← → | go to next window, on floating window: put it away, back to strip |
+| ⌃⌥ ↑ ↓ | go to next workspace with window in it |
+| ⌃⌥⇧ ← → | move window |
+| ⌥ 1–9 | go to workspace 1–9, ⇧ = take window there |
+| ⌃⌥ R | one column or full |
+| ⌃⌥ F | fill screen |
+| ⌃⌥ C | center |
+| ⌃⌥ P / ⌃⌥⇧ P | pin left / right, again = unpin |
+| ⌃⌥ T | float, again = back in strip |
+| ⌃⌥ Q | quit |
 
-Can whitelist app to float, not go in strip. E.g. Telegram.
+can whitelist app to float, not go in strip, e.g. telegram
 
-Want change any control or setting? Open config file. Not know how change? Ask AI.
+want change any control or setting? open config file, not know how change? ask ai
 
-## Where from
+## where from
 
-Fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do hard part. Fih add pin, snap, strip map, up-and-down strip, column, auto fill, and fish.
+fih is fork of [paneru](https://github.com/karinushka/paneru), paneru do hard part, fih add pin, snap, strip map, up-and-down strip, column, auto fill, and fish
 
-README talk like [caveman](https://github.com/juliusbrussee/caveman). Good repo. Make AI talk less too.
+readme talk like [caveman](https://github.com/juliusbrussee/caveman), good repo, make ai talk less too
 
-MIT license.
+mit license

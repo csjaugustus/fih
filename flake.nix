@@ -1,5 +1,5 @@
 {
-  description = "Speedmaxxed sliding, tiling window manager for macOS, optimized for single monitor use";
+  description = "speedmaxxed sliding, tiling window manager for macos, optimized for single monitor use";
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
