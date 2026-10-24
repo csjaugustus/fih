@@ -20,11 +20,11 @@ use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
     NSBackingStoreType, NSBezierPath, NSColor, NSCompositingOperation, NSEvent,
-    NSFloatingWindowLevel, NSImage, NSPanel, NSRunningApplication, NSView,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSFloatingWindowLevel, NSImage, NSImageSymbolConfiguration, NSPanel, NSRunningApplication,
+    NSView, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_core_foundation::CGFloat;
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 
 use crate::commands::{Command, Direction, Operation};
 use crate::config::Config;
@@ -55,6 +55,12 @@ const ICON_SIZE: f64 = 30.0;
 const SLOT_WIDTH: f64 = TILE_WIDTH + TILE_GAP;
 /// Icon strength for a column that is off screen.
 const OFF_SCREEN_ICON_ALPHA: f64 = 0.4;
+/// The pinned-window colour: an orange that reads apart from the focus teal.
+const PIN_RED: f64 = 1.0;
+const PIN_GREEN: f64 = 0.62;
+const PIN_BLUE: f64 = 0.04;
+/// Height of the lock drawn on the pinned window's tile.
+const PIN_LOCK_HEIGHT: f64 = 11.0;
 /// The focus colour: the teal of the default focus border.
 const FOCUS_RED: f64 = 0x5A as f64 / 255.0;
 const FOCUS_GREEN: f64 = 0xC5 as f64 / 255.0;
@@ -69,6 +75,8 @@ pub struct MinimapColumn {
     pub x: i32,
     pub width: i32,
     pub focused: bool,
+    /// The window pinned to an edge of the viewport, outside the columns.
+    pub pinned: bool,
 }
 
 /// What the minimap shows: the strip's columns and the visible range, both
@@ -105,8 +113,12 @@ pub(crate) fn minimap_geometry(snapshot: &MinimapSnapshot, max_width: f64) -> Mi
     }
 }
 
-/// Whether most of `column` is inside the visible range `viewport`.
+/// Whether most of `column` is inside the visible range `viewport`. A pinned
+/// window always is.
 pub(crate) fn column_on_screen(column: &MinimapColumn, viewport: (i32, i32)) -> bool {
+    if column.pinned {
+        return true;
+    }
     let (view_min, view_max) = viewport;
     let overlap = (column.x + column.width).min(view_max) - column.x.max(view_min);
     overlap * 2 >= column.width.max(1)
@@ -309,16 +321,40 @@ pub(crate) fn update_minimap(
                 x: strip_x + x,
                 width: column.width(&frame)?,
                 focused: focused.is_some_and(|entity| column.window_iter().any(|e| e == entity)),
+                pinned: false,
             })
         })
         .collect::<Vec<_>>();
+    let viewport = display.actual_display_bounds(dock, &config);
+    // The pinned window is no column, but it is on screen: it shows at the
+    // edge it is pinned to.
+    let mut columns = columns;
+    if let Some(pin) = layout_strip.pinned()
+        && let Ok((window, Bounds(size))) = windows.get(pin.entity)
+    {
+        let pinned = MinimapColumn {
+            pid: window.pid().ok(),
+            x: if pin.east {
+                viewport.max.x - size.x
+            } else {
+                viewport.min.x
+            },
+            width: size.x,
+            focused: focused == Some(pin.entity),
+            pinned: true,
+        };
+        if pin.east {
+            columns.push(pinned);
+        } else {
+            columns.insert(0, pinned);
+        }
+    }
     // An empty strip has nothing to show, even when toggled on.
     if columns.is_empty() {
         manager.hide();
         MinimapState::set_on_screen(&mut state, false);
         return;
     }
-    let viewport = display.actual_display_bounds(dock, &config);
     let snapshot = MinimapSnapshot {
         columns,
         viewport: (viewport.min.x, viewport.max.x),
@@ -347,6 +383,10 @@ struct Tile {
     icon: Option<Retained<NSImage>>,
     focused: bool,
     on_screen: bool,
+    pinned: bool,
+    /// The column's place in the strip, which a click focuses; `None` for
+    /// the pinned window, which no column number reaches.
+    column: Option<usize>,
 }
 
 struct MinimapViewIvars {
@@ -382,7 +422,18 @@ define_class!(
             panel.stroke();
 
             for tile in &ivars.tiles {
-                let (fill, border, line_width) = if tile.focused {
+                let (fill, border, line_width) = if tile.pinned {
+                    (
+                        NSColor::colorWithSRGBRed_green_blue_alpha(
+                            PIN_RED,
+                            PIN_GREEN,
+                            PIN_BLUE,
+                            if tile.focused { 0.18 } else { 0.08 },
+                        ),
+                        NSColor::colorWithSRGBRed_green_blue_alpha(PIN_RED, PIN_GREEN, PIN_BLUE, 1.0),
+                        if tile.focused { 2.0 } else { 1.5 },
+                    )
+                } else if tile.focused {
                     (
                         NSColor::colorWithSRGBRed_green_blue_alpha(
                             FOCUS_RED, FOCUS_GREEN, FOCUS_BLUE, 0.16,
@@ -415,6 +466,10 @@ define_class!(
                 border.setStroke();
                 path.setLineWidth(line_width);
                 path.stroke();
+
+                if tile.pinned {
+                    draw_pin_lock(tile.rect);
+                }
 
                 let Some(icon) = &tile.icon else {
                     continue;
@@ -457,9 +512,15 @@ define_class!(
                 return;
             };
             let point = self.convertPoint_fromView(event.locationInWindow(), None);
-            let Some(index) = ivars.tiles.iter().position(|tile| {
-                point.x >= tile.rect.origin.x && point.x <= tile.rect.origin.x + tile.rect.size.width
-            }) else {
+            let Some(index) = ivars
+                .tiles
+                .iter()
+                .find(|tile| {
+                    point.x >= tile.rect.origin.x
+                        && point.x <= tile.rect.origin.x + tile.rect.size.width
+                })
+                .and_then(|tile| tile.column)
+            else {
                 return;
             };
             let command = Command::Window(Operation::Focus(Direction::Nth(index)));
@@ -469,6 +530,46 @@ define_class!(
         }
     }
 );
+
+/// Draws a small orange lock in the top-right corner of `tile`, marking the
+/// pinned window.
+fn draw_pin_lock(tile: NSRect) {
+    let Some(symbol) = NSImage::imageWithSystemSymbolName_accessibilityDescription(
+        &NSString::from_str("lock.fill"),
+        None,
+    ) else {
+        return;
+    };
+    let orange = NSColor::colorWithSRGBRed_green_blue_alpha(PIN_RED, PIN_GREEN, PIN_BLUE, 1.0);
+    let colored = NSImageSymbolConfiguration::configurationWithPaletteColors(
+        &NSArray::from_retained_slice(&[orange]),
+    );
+    let Some(lock) = symbol.imageWithSymbolConfiguration(&colored) else {
+        return;
+    };
+    let natural = lock.size();
+    if natural.height <= 0.0 {
+        return;
+    }
+    let size = NSSize::new(
+        PIN_LOCK_HEIGHT * natural.width / natural.height,
+        PIN_LOCK_HEIGHT,
+    );
+    let inset = 5.0;
+    let rect = NSRect::new(
+        NSPoint::new(
+            tile.origin.x + tile.size.width - size.width - inset,
+            tile.origin.y + tile.size.height - size.height - inset,
+        ),
+        size,
+    );
+    lock.drawInRect_fromRect_operation_fraction(
+        rect,
+        NSRect::ZERO,
+        NSCompositingOperation::SourceOver,
+        1.0,
+    );
+}
 
 impl MinimapView {
     fn new(mtm: MainThreadMarker, frame: NSRect, ivars: MinimapViewIvars) -> Retained<Self> {
@@ -535,6 +636,7 @@ impl MinimapManager {
         // The same space above and below the tiles as at the panel's ends.
         let edge = PANEL_PADDING + TILE_GAP / 2.0;
         let tile_height = MINIMAP_HEIGHT - 2.0 * edge;
+        let mut next_column = 0;
         let tiles = snapshot
             .columns
             .iter()
@@ -547,6 +649,11 @@ impl MinimapManager {
                 icon: column.pid.and_then(|pid| self.icon(pid)),
                 focused: column.focused,
                 on_screen: column_on_screen(column, snapshot.viewport),
+                pinned: column.pinned,
+                column: (!column.pinned).then(|| {
+                    next_column += 1;
+                    next_column - 1
+                }),
             })
             .collect();
 
@@ -626,6 +733,7 @@ mod tests {
             x,
             width,
             focused: false,
+            pinned: false,
         }
     }
 
@@ -675,5 +783,12 @@ mod tests {
         );
         assert!(!column_on_screen(&column(-1000, 1000), viewport));
         assert!(!column_on_screen(&column(1000, 500), viewport));
+    }
+
+    #[test]
+    fn a_pinned_window_is_always_on_screen() {
+        let mut pinned = column(-5000, 500);
+        pinned.pinned = true;
+        assert!(column_on_screen(&pinned, (0, 1000)));
     }
 }
