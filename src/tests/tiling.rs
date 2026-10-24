@@ -375,6 +375,119 @@ fn test_window_vertical_resize_grow_and_shrink_cycle() {
         .run(commands);
 }
 
+/// `window_wider` / `window_narrower` move the width by a fixed fraction of
+/// the display instead of jumping between presets, and stop at full width.
+#[test]
+fn test_window_step_width() {
+    let commands = vec![
+        Event::MenuOpened { window_id: 0 },
+        Event::Command {
+            command: Command::Window(Operation::StepWidth(ResizeDirection::Grow)),
+        },
+        Event::Command {
+            command: Command::Window(Operation::StepWidth(ResizeDirection::Grow)),
+        },
+        Event::Command {
+            command: Command::Window(Operation::StepWidth(ResizeDirection::Shrink)),
+        },
+    ];
+
+    // 400px of a 1024px display, stepping by 5% (51.2px) at a time.
+    TestHarness::new()
+        .with_windows(1)
+        .on_iteration(1, |world, _state| {
+            assert_window_size!(world, 0, 451, 748);
+        })
+        .on_iteration(2, |world, _state| {
+            assert_window_size!(world, 0, 502, 748);
+        })
+        .on_iteration(3, |world, _state| {
+            assert_window_size!(world, 0, 451, 748);
+        })
+        .run(commands);
+}
+
+#[test]
+fn test_window_step_width_stops_at_full_width() {
+    let commands = vec![
+        Event::MenuOpened { window_id: 0 },
+        Event::Command {
+            command: Command::Window(Operation::StepWidth(ResizeDirection::Grow)),
+        },
+        Event::Command {
+            command: Command::Window(Operation::StepWidth(ResizeDirection::Grow)),
+        },
+        Event::Command {
+            command: Command::Window(Operation::StepWidth(ResizeDirection::Grow)),
+        },
+    ];
+
+    let config: Config = (
+        MainOptions {
+            window_width_step: Some(0.4),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(1)
+        .on_iteration(1, |world, _state| {
+            assert_window_size!(world, 0, 810, 748);
+        })
+        .on_iteration(2, |world, _state| {
+            assert_window_size!(world, 0, TEST_DISPLAY_WIDTH, 748);
+        })
+        .on_iteration(3, |world, _state| {
+            assert_window_size!(world, 0, TEST_DISPLAY_WIDTH, 748);
+        })
+        .run(commands);
+}
+
+/// `window_taller` / `window_shorter` step a stacked window's height by 10% of
+/// the viewport, with the neighbour absorbing the difference.
+#[test]
+fn test_window_step_height_in_stack() {
+    const VIEWPORT_HEIGHT: i32 = TEST_DISPLAY_HEIGHT - TEST_MENUBAR_HEIGHT;
+
+    let commands = vec![
+        Event::MenuOpened { window_id: 0 }, // 0
+        Event::Command {
+            command: Command::Window(Operation::Focus(Direction::First)),
+        }, // 1
+        Event::Command {
+            command: Command::Window(Operation::Focus(Direction::East)),
+        }, // 2
+        Event::Command {
+            command: Command::Window(Operation::Stack(true)),
+        }, // 3
+        Event::Command {
+            command: Command::Window(Operation::StepHeight(ResizeDirection::Grow)),
+        }, // 4
+        Event::Command {
+            command: Command::Window(Operation::StepHeight(ResizeDirection::Shrink)),
+        }, // 5
+    ];
+
+    TestHarness::new()
+        .with_windows(2)
+        .on_iteration(3, |world, _state| {
+            assert_window_size!(world, 1, TEST_WINDOW_WIDTH, VIEWPORT_HEIGHT / 2);
+        })
+        .on_iteration(4, |world, _state| {
+            // 0.5 + 0.1 of the 748px viewport.
+            assert_window_size!(world, 1, TEST_WINDOW_WIDTH, 449);
+            assert_window_size!(world, 0, TEST_WINDOW_WIDTH, VIEWPORT_HEIGHT - 449);
+        })
+        .on_iteration(5, |world, _state| {
+            assert_window_size!(world, 1, TEST_WINDOW_WIDTH, 374);
+            assert_window_size!(world, 0, TEST_WINDOW_WIDTH, VIEWPORT_HEIGHT - 374);
+        })
+        .run(commands);
+}
+
 /// A preset that would starve the neighbour is clamped to leave it the minimum
 /// window height, rather than letting the binpacker average the column.
 #[test]

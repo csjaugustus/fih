@@ -35,6 +35,8 @@ General behavior settings for the window manager.
 | `menubar_height` | Integer (px) | *Auto* | Manually override the detected macOS menubar height. |
 | `window_hidden_ratio` | Float (0.0–1.0) | `0.0` | How much of a window can be hidden before it's forced into view on focus change. `0.0` = eager, `1.0` = lazy. |
 | `window_resize_cycle` | Boolean | `true` | If disabled, `window_resize` and `window_shrink` (and their `window_vertical_*` counterparts) stop at the largest/smallest preset instead of cycling back. |
+| `window_width_step` | Float (0.01–1.0) | `0.05` | Fraction of the display width that `window_wider` / `window_narrower` add or remove. |
+| `window_height_step` | Float (0.01–1.0) | `0.1` | Fraction of the viewport height that `window_taller` / `window_shorter` add or remove from a stacked window. |
 | `mouse_resize_modifier` | String | *None* | If enabled allows window resizing using mouse movement. For example `cmd + shift` will allow resizing of the window when holding those keys. Proximity of the pointer to left or right window edge determines which side will be adjusted. |
 | `reap_empty_workspaces` | String | `false` | If enabled, a virtual workspace without any windows will be removed. |
 | `disable_native_tabs` | Boolean | `false` | If enabled, Raven will not auto-merge a window into a tab group with an existing same-app sibling that shares its frame. Merging happens when the window is created, and again for a background tab that the window server stops showing while a sibling of the same app holds the same frame — an app that hides its old tab a moment late would otherwise leave a column nothing can appear in. Use this if you find unrelated windows being grouped together. |
@@ -235,6 +237,8 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_swap_west` / `_east` | Swap current window with neighbor. |
 | `window_swap_north` / `_south` | Swap current window above/below. If no window exists, moves the window to the display in that direction. |
 | `window_swap_first` / `_last` | Move current window to start/end of strip. |
+| `window_focus_<n>` | Focus the window in column `n` (1-based, e.g. `window_focus_3`). |
+| `window_swap_<n>` | Move the current window to column `n` (1-based), shifting the columns in between. |
 | `window_center` | Center the current window in the viewport. |
 | `window_resize` | Cycle through preset widths (Grow). |
 | `window_grow` | Alias for `window_resize`. |
@@ -242,6 +246,10 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_vertical_resize` | Cycle a stacked window through preset heights (Grow). No-op outside a stack. |
 | `window_vertical_grow` | Alias for `window_vertical_resize`. |
 | `window_vertical_shrink` | Cycle a stacked window through preset heights (Shrink). |
+| `window_wider` | Grow the focused column by `window_width_step` (stops at full width). |
+| `window_narrower` | Shrink the focused column by `window_width_step`. |
+| `window_taller` | Grow a stacked window by `window_height_step`. No-op outside a stack. |
+| `window_shorter` | Shrink a stacked window by `window_height_step`. No-op outside a stack. |
 | `window_fullwidth` | Toggle full-width mode. |
 | `window_manage` | Toggle between tiled and floating state. |
 | `window_stack` | Stack the current window into the column on the left. |

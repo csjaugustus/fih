@@ -228,6 +228,12 @@ pub enum Operation {
     /// Cycles the focused window's height through the preset stack heights.
     /// Only applies to windows inside a stack.
     ResizeVertical(ResizeDirection),
+    /// Grows or shrinks the focused column by `window_width_step` of the
+    /// display width, instead of jumping between presets.
+    StepWidth(ResizeDirection),
+    /// Grows or shrinks a stacked window by `window_height_step` of the
+    /// viewport height. Only applies to windows inside a stack.
+    StepHeight(ResizeDirection),
     /// Resizes the focused window to an exact display-width ratio.
     SetWidth(f64),
     /// Toggles the focused window to full width or a preset width.

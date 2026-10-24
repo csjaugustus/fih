@@ -73,7 +73,7 @@ fn parse_operation(argv: &[&str]) -> Result<Operation> {
             _ => return Err(err()),
         },
         "togglefloatlayer" => Operation::ToggleFloatingLayer,
-        "swap" => Operation::Swap(Direction::parse(argument()?)?),
+        "swap" => Operation::Swap(Direction::parse_positional(argument()?)?),
         "center" => Operation::Center,
         "resize" => Operation::Resize(
             argv.get(1)
@@ -89,6 +89,11 @@ fn parse_operation(argv: &[&str]) -> Result<Operation> {
                 .map_or(Ok(ResizeDirection::Grow), |arg| ResizeDirection::parse(arg))?,
             Some(arg) => ResizeDirection::parse(arg)?,
         }),
+        // ChainYourMac-compatible fixed-step resizes: `window_wider` and friends.
+        "wider" => Operation::StepWidth(ResizeDirection::Grow),
+        "narrower" => Operation::StepWidth(ResizeDirection::Shrink),
+        "taller" => Operation::StepHeight(ResizeDirection::Grow),
+        "shorter" => Operation::StepHeight(ResizeDirection::Shrink),
         "fullwidth" => Operation::FullWidth,
         "manage" => Operation::Manage,
         "equalize" => Operation::Equalize,
@@ -191,6 +196,10 @@ impl Operation {
             Operation::ResizeVertical(direction) => {
                 owned(&["vertical", "resize", direction.token()])
             }
+            Operation::StepWidth(ResizeDirection::Grow) => owned(&["wider"]),
+            Operation::StepWidth(ResizeDirection::Shrink) => owned(&["narrower"]),
+            Operation::StepHeight(ResizeDirection::Grow) => owned(&["taller"]),
+            Operation::StepHeight(ResizeDirection::Shrink) => owned(&["shorter"]),
             // `SetWidth` comes from window rules, not from a command line; it has
             // no argv verb, so encode it as the equivalent full-width toggle.
             Operation::SetWidth(_) | Operation::FullWidth => owned(&["fullwidth"]),
@@ -248,10 +257,15 @@ mod tests {
             Operation::Focus(Direction::East),
             Operation::Focus(Direction::Nth(2)),
             Operation::Swap(Direction::West),
+            Operation::Swap(Direction::Nth(2)),
             Operation::Center,
             Operation::Resize(ResizeDirection::Shrink),
             Operation::ResizeVertical(ResizeDirection::Grow),
             Operation::ResizeVertical(ResizeDirection::Shrink),
+            Operation::StepWidth(ResizeDirection::Grow),
+            Operation::StepWidth(ResizeDirection::Shrink),
+            Operation::StepHeight(ResizeDirection::Grow),
+            Operation::StepHeight(ResizeDirection::Shrink),
             Operation::FullWidth,
             Operation::ToNextDisplay(MoveFocus::Follow),
             Operation::ToNextDisplay(MoveFocus::Stay),
@@ -324,7 +338,7 @@ mod tests {
     fn invalid_commands_are_rejected() {
         assert!(parse_command(&["definitely", "not", "a", "command"]).is_err());
         assert!(parse_command(&["window", "focus"]).is_err());
-        assert!(parse_command(&["window", "swap", "3"]).is_err());
+        assert!(parse_command(&["window", "swap", "0"]).is_err());
         assert!(parse_command(&["showmenu", "extra"]).is_err());
         assert!(parse_command(&["hidemenu", "extra"]).is_err());
     }

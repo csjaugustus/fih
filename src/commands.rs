@@ -855,7 +855,10 @@ fn resize_window(
     mut commands: Commands,
 ) {
     let Some(operation) = filter_window_operations(&mut messages, |op| {
-        matches!(op, Operation::Resize(_) | Operation::SetWidth(_))
+        matches!(
+            op,
+            Operation::Resize(_) | Operation::SetWidth(_) | Operation::StepWidth(_)
+        )
     })
     .next() else {
         return;
@@ -903,6 +906,19 @@ fn resize_window(
                     fallback
                 }
             }),
+        Operation::StepWidth(direction) => {
+            // Pending resizes count, so holding the key keeps stepping instead
+            // of re-reading a mid-animation width.
+            let moving = windows.moving_frame(entity).unwrap_or(frame);
+            let current_ratio = f64::from(moving.width()) / f64::from(viewport.width());
+            let step = config.window_width_step();
+            match direction {
+                // Oversized (scrollable) columns are left to the presets.
+                ResizeDirection::Grow if current_ratio >= 1.0 => return,
+                ResizeDirection::Grow => (current_ratio + step).min(1.0),
+                ResizeDirection::Shrink => (current_ratio - step).max(step),
+            }
+        }
         _ => return,
     };
 
@@ -943,13 +959,14 @@ fn resize_window_vertical(
     config: Res<Config>,
     mut commands: Commands,
 ) {
-    let Some(&Operation::ResizeVertical(direction)) =
-        filter_window_operations(&mut messages, |op| {
-            matches!(op, Operation::ResizeVertical(_))
-        })
-        .next()
-    else {
-        return;
+    let (direction, step) = match filter_window_operations(&mut messages, |op| {
+        matches!(op, Operation::ResizeVertical(_) | Operation::StepHeight(_))
+    })
+    .next()
+    {
+        Some(&Operation::ResizeVertical(direction)) => (direction, None),
+        Some(&Operation::StepHeight(direction)) => (direction, Some(config.window_height_step())),
+        _ => return,
     };
 
     let Some((_, entity)) = windows.focused() else {
@@ -1001,8 +1018,11 @@ fn resize_window_vertical(
     let cycle = config.window_resize_cycle();
     // The presets are assumed sorted ascending, and the `0.05` dead-band keeps
     // float noise from re-selecting the preset the window is already at.
-    let next_ratio = match direction {
-        ResizeDirection::Grow => heights
+    let next_ratio = match (direction, step) {
+        // Fixed steps; the clamp below keeps both windows of the pair usable.
+        (ResizeDirection::Grow, Some(step)) => current_ratio + step,
+        (ResizeDirection::Shrink, Some(step)) => current_ratio - step,
+        (ResizeDirection::Grow, None) => heights
             .iter()
             .copied()
             .find(|&r| r > current_ratio + 0.05)
@@ -1013,7 +1033,7 @@ fn resize_window_vertical(
                     *heights.last().unwrap_or(&fallback)
                 }
             }),
-        ResizeDirection::Shrink => heights
+        (ResizeDirection::Shrink, None) => heights
             .iter()
             .rev()
             .copied()

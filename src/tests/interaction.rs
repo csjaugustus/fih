@@ -805,6 +805,51 @@ fn test_window_swap_brings_focused_into_view() {
 }
 
 #[test]
+fn test_window_swap_by_number_moves_focused_to_that_column() {
+    // `window_swap_3` moves the focused window to column 3 (1-based), shifting
+    // the columns in between, the same way `Swap(Last)` bubbles to the end.
+    let commands = vec![
+        Event::MenuOpened { window_id: 0 },
+        Event::Command {
+            command: Command::Window(Operation::Focus(Direction::Nth(0))),
+        },
+        Event::Command {
+            command: Command::Window(Operation::Swap(Direction::Nth(2))),
+        },
+        Event::Command {
+            command: Command::Window(Operation::Swap(Direction::Nth(9))),
+        },
+    ];
+
+    let focused_index = |world: &mut World| {
+        let focused = world
+            .query_filtered::<Entity, With<FocusedMarker>>()
+            .single(world)
+            .expect("one focused window");
+        let mut query = world.query_filtered::<&LayoutStrip, With<ActiveWorkspaceMarker>>();
+        let strip = query.single(world).expect("active strip");
+        (
+            strip.index_of(focused).expect("focused window in strip"),
+            strip.len(),
+        )
+    };
+
+    TestHarness::new()
+        .with_windows(5)
+        .on_iteration(1, move |world, _state| {
+            assert_eq!(focused_index(world), (0, 5));
+        })
+        .on_iteration(2, move |world, _state| {
+            assert_eq!(focused_index(world), (2, 5));
+        })
+        .on_iteration(3, move |world, _state| {
+            // Past the end of the strip: nothing to swap with, nothing moves.
+            assert_eq!(focused_index(world), (2, 5));
+        })
+        .run(commands);
+}
+
+#[test]
 fn test_window_swap_keeps_strip_when_in_view() {
     // Two windows fit the viewport. Swap(West) on the focused (right)
     // window swaps the columns: both new layout slots are still inside the

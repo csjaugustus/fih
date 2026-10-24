@@ -852,6 +852,20 @@ impl Config {
         self.options().window_resize_cycle.unwrap_or(true)
     }
 
+    pub fn window_width_step(&self) -> f64 {
+        self.options()
+            .window_width_step
+            .unwrap_or(0.05)
+            .clamp(0.01, 1.0)
+    }
+
+    pub fn window_height_step(&self) -> f64 {
+        self.options()
+            .window_height_step
+            .unwrap_or(0.1)
+            .clamp(0.01, 1.0)
+    }
+
     pub fn auto_center(&self) -> bool {
         self.options().auto_center.is_some_and(|center| center)
     }
@@ -1326,6 +1340,14 @@ pub struct MainOptions {
     /// to both the horizontal and the vertical resize commands.
     /// Default: true (cycles). Set to false to stop at the limits.
     pub window_resize_cycle: Option<bool>,
+
+    /// Fraction of the display width that `window_wider` / `window_narrower`
+    /// add or remove. Default: 0.05.
+    pub window_width_step: Option<f64>,
+
+    /// Fraction of the viewport height that `window_taller` / `window_shorter`
+    /// add or remove from a stacked window. Default: 0.1.
+    pub window_height_step: Option<f64>,
 
     /// If enabled, an empty virtual workspace will be removed.
     /// Default: true.
