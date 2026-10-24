@@ -1336,4 +1336,25 @@ fn three_columns_make_resize_and_reset_use_thirds() {
     command(&mut harness, Operation::Resize(ResizeDirection::Grow));
     command(&mut harness, Operation::SetColumns(3));
     assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH);
+
+    // Switching count resets the windows a column wide, not a full-width
+    // one: that is full width on purpose.
+    command(&mut harness, Operation::SetColumns(2));
+    assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH);
+    let mut widths = (0..3)
+        .map(|window_id| auto_fill_window_width(harness.world(), window_id))
+        .collect::<Vec<_>>();
+    widths.sort_unstable();
+    assert_eq!(
+        widths,
+        [
+            TEST_DISPLAY_WIDTH / 2,
+            TEST_DISPLAY_WIDTH / 2,
+            TEST_DISPLAY_WIDTH
+        ]
+    );
+
+    // Reset widths resets every window, the full-width one too.
+    command(&mut harness, Operation::ResetWidths);
+    assert_eq!(focused(&mut harness), TEST_DISPLAY_WIDTH / 2);
 }

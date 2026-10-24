@@ -188,7 +188,7 @@ fih showmenu
 
 This command shows the item in the running daemon and remembers the new choice. Lua scripts can use `paneru.showmenu()` and `paneru.hidemenu()`, or bind `showmenu` and `hidemenu` to keys. Choices are stored in `$XDG_STATE_HOME/paneru/menu-bar.json` (normally `~/.local/state/fih/menu-bar.json`); removing this file while fih is stopped restores the configuration's behavior.
 
-The menu lists every workspace that has windows, with the apps in it; pick one to switch there. Below **Open Config File…** (which opens the configuration fih is using in your default text editor) it picks the current workspace's layout, **2 Columns** or **3 Columns**: windows there are then either one column (half or a third of the screen) or the full width, which `window_resize` toggles between and auto-fill keeps to. **Reset Widths** sets every window in the workspace to one column. **Quit fih** is last.
+The menu lists every workspace that has windows, with the apps in it; pick one to switch there. Below **Open Config File…** (which opens the configuration fih is using in your default text editor) it picks the current workspace's layout, **2 Columns** or **3 Columns**: windows there are then either one column (half or a third of the screen) or the full width, which `window_resize` toggles between and auto-fill keeps to. Switching between them resets the windows a column wide and leaves full-width ones. **Reset Widths** sets every window in the workspace to one column, full-width ones included. **Quit fih** is last.
 
 The permission setup menu remains visible until the required macOS access is granted.
 
@@ -283,7 +283,7 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_equalize` | Make all windows in a stack equal height. |
 | `window_balance` | Make all columns in the strip the same width as the focused window. |
 | `window_resetwidths` | Set every column in the current workspace to one column of its layout: half the display width with 2 columns (the default), a third with 3 (also in the menu bar menu as **Reset Widths**). |
-| `window_columns_<count>` | Lay the current workspace out in `<count>` columns (the menu bar menu offers 2 and 3), so `window_resize` toggles between one column and the full width. Switching to a different count resets every window to one column of it. |
+| `window_columns_<count>` | Lay the current workspace out in `<count>` columns (the menu bar menu offers 2 and 3), so `window_resize` toggles between one column and the full width. Switching to a different count resets the windows a column wide to one column of it, leaving full-width windows as they are. |
 | `window_nextdisplay` | Move focused window to the next monitor and follow it. |
 | `window_nextdisplaysend` | Move focused window to the next monitor but stay on current. |
 | `mouse_nextdisplay` | Warp mouse cursor to the next monitor. |

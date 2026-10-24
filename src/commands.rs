@@ -119,7 +119,7 @@ pub fn register_commands(app: &mut bevy::app::App) {
             full_width_window,
             to_next_display,
             equalize_column,
-            (balance_strip, reset_strip_widths, set_strip_columns),
+            (balance_strip, strip_columns_and_widths),
             manage_window,
             stack_windows_handler,
             command_move_focus,
@@ -1530,48 +1530,36 @@ fn balance_strip(
     commands.reshuffle_around(focused_entity);
 }
 
-/// Lays the active workspace out in the chosen number of columns. Changing
-/// the count resets every window to one column of it; from then on the
-/// resize and reset widths commands keep to it.
-fn set_strip_columns(
-    mut messages: MessageReader<Event>,
-    mut active_display: ActiveDisplayMut,
-    mut commands: Commands,
-) {
-    let Some(&count) =
-        filter_window_operations(&mut messages, |op| matches!(op, Operation::SetColumns(_)))
-            .find_map(|op| match op {
-                Operation::SetColumns(count) => Some(count),
-                _ => None,
-            })
-    else {
-        return;
-    };
-    let strip = active_display.active_strip();
-    let changed = strip.column_count() != count;
-    strip.set_column_count(count);
-    if changed {
-        commands.trigger(SendMessageTrigger(Event::Command {
-            command: Command::Window(Operation::ResetWidths),
-        }));
-    }
-}
-
-/// Sets every column in the active strip to one column of its layout, the
-/// way the menu's "Reset Widths" asks for.
-fn reset_strip_widths(
+/// Lays the active workspace out in columns, and resets its widths to one
+/// column. "Reset Widths" resets every window; switching to a different
+/// column count resets the ones a column wide and leaves full-width windows,
+/// which are full width on purpose.
+fn strip_columns_and_widths(
     mut messages: MessageReader<Event>,
     windows: Windows,
-    active_display: ActiveDisplay,
+    mut active_display: ActiveDisplayMut,
     config: Res<Config>,
     mut commands: Commands,
 ) {
-    if filter_window_operations(&mut messages, |op| matches!(op, Operation::ResetWidths))
-        .next()
-        .is_none()
-    {
-        return;
+    // `Some(true)` keeps full-width windows, `Some(false)` resets them too.
+    let mut reset = None;
+    for operation in filter_window_operations(&mut messages, |op| {
+        matches!(op, Operation::SetColumns(_) | Operation::ResetWidths)
+    }) {
+        match operation {
+            Operation::SetColumns(count) => {
+                let strip = active_display.active_strip();
+                if strip.column_count() != *count {
+                    reset.get_or_insert(true);
+                }
+                strip.set_column_count(*count);
+            }
+            _ => reset = Some(false),
+        }
     }
+    let Some(keep_full_width) = reset else {
+        return;
+    };
 
     // Ratios are of the display's usable width, as `resize_window` takes them;
     // a pinned window caps how wide a column can get.
@@ -1583,10 +1571,20 @@ fn reset_strip_widths(
     let strip = active_display.active_strip();
     let column_width =
         round_px(f64::from(display_width) * strip.column_ratio()).min(viewport_width);
+    // A pixel or two short of the viewport still reads as full width.
+    let is_full_width = |entity| {
+        windows.full_width(entity).is_some()
+            || windows
+                .size(entity)
+                .is_some_and(|size| size.x >= viewport_width - 2)
+    };
 
     let mut anchor = None;
     for column in strip.columns() {
         if matches!(column, Column::Fullscren(_)) {
+            continue;
+        }
+        if keep_full_width && column.window_iter().any(is_full_width) {
             continue;
         }
         for entity in column.window_iter() {
