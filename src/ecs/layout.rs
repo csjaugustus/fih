@@ -187,6 +187,7 @@ impl Plugin for LayoutEventsPlugin {
                     layout_strip_changed,
                     reshuffle_layout_strip,
                     ensure_visible_in_strip,
+                    left_align_fitting_strips.run_if(fitting_inputs_changed),
                     position_layout_strips,
                     position_layout_windows,
                 )
@@ -1550,6 +1551,69 @@ fn resolve_strip_scroll_context<'a>(
         raw_display_bounds: display.bounds(),
         is_new_activation: has_previous_position && active_marker.is_some_and(|m| m.is_added()),
     })
+}
+
+/// Windows whose size, or target size, changed, to know whether there is
+/// anything to line up.
+type ResizedWindowsAny<'w, 's> =
+    Query<'w, 's, (), (With<Window>, Or<(Changed<Bounds>, Changed<ResizeMarker>)>)>;
+
+/// Whether a window's size, or a strip, changed since strips were last lined
+/// up by [`left_align_fitting_strips`].
+fn fitting_inputs_changed(
+    sizes: ResizedWindowsAny,
+    strips: Query<(), Changed<LayoutStrip>>,
+) -> bool {
+    !sizes.is_empty() || !strips.is_empty()
+}
+
+/// Lines a strip that fits on screen up with the left edge, when the strip
+/// is kept against the edges (no auto-centre, no continuous swipe). Each
+/// reshuffle places the strip from the sizes it sees at that moment, and
+/// opening or closing a window sets off several while windows are still
+/// resizing, so the last of them can leave a gap from widths on their way
+/// out. This judges by the widths windows are heading to, every time a size
+/// or the strip changes, so a strip that fits always ends up flush.
+#[instrument(level = Level::DEBUG, skip_all)]
+fn left_align_fitting_strips(
+    strips: StripPlacements,
+    displays: DisplayViewports,
+    windows: Windows,
+    config: Res<Config>,
+    mut commands: Commands,
+) {
+    // A pixel or two of rounding per column still fits.
+    const TOLERANCE: i32 = 2;
+    if config.auto_center() || config.continuous_swipe() {
+        return;
+    }
+    for (strip, strip_entity, position, child, active, reposition, _) in &strips {
+        if active.is_none() {
+            continue;
+        }
+        let Ok((display, dock)) = displays.get(child.parent()) else {
+            continue;
+        };
+        let Some(total) = strip
+            .columns()
+            .map(|column| {
+                column
+                    .top()
+                    .and_then(|top| windows.moving_frame(top))
+                    .map(|frame| frame.width())
+            })
+            .sum::<Option<i32>>()
+            .filter(|total| *total > 0)
+        else {
+            continue;
+        };
+        let viewport = display.actual_display_bounds(dock, &config);
+        let slack = TOLERANCE * i32::try_from(strip.len()).unwrap_or(i32::MAX);
+        let target = reposition.map_or(position.0, |reposition| reposition.0);
+        if total <= viewport.width() + slack && target.x != viewport.min.x {
+            commands.reposition_entity(strip_entity, target.with_x(viewport.min.x));
+        }
+    }
 }
 
 #[instrument(level = Level::DEBUG, skip_all)]
