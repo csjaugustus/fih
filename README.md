@@ -13,6 +13,12 @@
 
 ---
 
+## Why name fih
+
+One time go oceanarium. See fih swim. Fih fast. Fih bendy. Fih no get distracted. Fih know where going.
+
+So app tile like fih: fast, smooth, no animation lag. Default zero animation. Window just there.
+
 | Many monitor | fih |
 |---|---|
 | Buy monitor. Buy another. Buy arm, dock, cable | One screen. Strip go forever |
@@ -84,12 +90,6 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 Can whitelist app to float, not go in strip. E.g. Telegram.
 
 Want change any control or setting? Open config file. Not know how change? Ask AI.
-
-## Why name fih
-
-One time go oceanarium. See fih swim. Fih fast. Fih bendy. Fih no get distracted. Fih know where going.
-
-So app tile like fih: fast, smooth, no animation lag. Default zero animation. Window just there.
 
 ## Where from
 
