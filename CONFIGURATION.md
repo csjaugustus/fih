@@ -136,7 +136,7 @@ workspace_popup_status = true
 
 ### `[decorations.minimap]`
 
-A row of app icons along the bottom of the screen, one icon-sized tile per column of the current strip, with the part that is on screen outlined and the focused column highlighted. It comes up briefly whenever a window command (focus, swap, resize, workspace switch, ...) or a swipe moves around the strip, and stays up while toggled on with `strip_show`. While the minimap is up, workspace and pin messages appear just above it.
+A row of app icons along the bottom of the screen, one tile per column of the current strip. The focused column's tile is outlined in teal, and the icons of columns that are off screen are dimmed. It comes up briefly whenever a window command (focus, swap, resize, workspace switch, ...) or a swipe moves around the strip, and stays up while toggled on with `strip_show`. While the minimap is up, workspace and pin messages appear just above it.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -188,7 +188,7 @@ fih showmenu
 
 This command shows the item in the running daemon and remembers the new choice. Lua scripts can use `paneru.showmenu()` and `paneru.hidemenu()`, or bind `showmenu` and `hidemenu` to keys. Choices are stored in `$XDG_STATE_HOME/paneru/menu-bar.json` (normally `~/.local/state/fih/menu-bar.json`); removing this file while fih is stopped restores the configuration's behavior.
 
-The menu lists every workspace that has windows, with the apps in it; pick one to switch there. It also has **Open Config File…**, which opens the configuration fih is using (`fih.toml`, or `init.lua` when a script is in charge) in your default text editor, and **Quit fih**.
+The menu lists every workspace that has windows, with the apps in it; pick one to switch there. It also has **Reset 50% Widths**, which sets every column in the current workspace to half the screen, and **Open Config File…**, which opens the configuration fih is using (`fih.toml`, or `init.lua` when a script is in charge) in your default text editor, and **Quit fih**.
 
 The permission setup menu remains visible until the required macOS access is granted.
 
@@ -282,6 +282,7 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_pin_left` / `window_pin_right` | Pin the focused window to the left/right half of the display; the strip scrolls in the other half. Pressing it for the other side moves the pin there, pressing it again unpins the window back into its column. One pin per virtual workspace; it hides and shows with its workspace. Focus reaches it by moving west/east off the end of the strip. |
 | `window_equalize` | Make all windows in a stack equal height. |
 | `window_balance` | Make all columns in the strip the same width as the focused window. |
+| `window_resetwidths` | Set every column in the current workspace to half the display width (also in the menu bar menu as **Reset 50% Widths**). |
 | `window_nextdisplay` | Move focused window to the next monitor and follow it. |
 | `window_nextdisplaysend` | Move focused window to the next monitor but stay on current. |
 | `mouse_nextdisplay` | Warp mouse cursor to the next monitor. |

@@ -162,6 +162,11 @@ define_class!(
             self.send_command(Command::Window(Operation::VirtualNumber(virtual_index)));
         }
 
+        #[unsafe(method(resetWidths:))]
+        fn reset_widths(&self, _: &NSMenuItem) {
+            self.send_command(Command::Window(Operation::ResetWidths));
+        }
+
         #[unsafe(method(openConfig:))]
         fn open_config(&self, _: &NSMenuItem) {
             let Some(path) = config_file() else {
@@ -496,6 +501,7 @@ impl MenuBarManager {
         if let Some(path) = config_file() {
             open_config.setToolTip(Some(&NSString::from_str(&path.display().to_string())));
         }
+        self.add_item("Reset 50% Widths", Some(sel!(resetWidths:)));
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));

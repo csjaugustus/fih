@@ -196,6 +196,7 @@ fn window_table(lua: &Lua, dispatch: &Dispatch) -> Result<Table> {
         ("manage", Operation::Manage),
         ("equalize", Operation::Equalize),
         ("balance", Operation::Balance),
+        ("reset_widths", Operation::ResetWidths),
         ("stack", Operation::Stack(true)),
         ("unstack", Operation::Stack(false)),
         ("full_width", Operation::FullWidth),

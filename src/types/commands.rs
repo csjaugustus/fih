@@ -244,6 +244,8 @@ pub enum Operation {
     Equalize,
     /// Makes all columns in the active strip the same width as the focused window.
     Balance,
+    /// Sets every column in the active strip to half the display width.
+    ResetWidths,
     /// Toggles the managed state of the focused window.
     Manage,
     /// Stacks or unstacks a window. The boolean indicates whether to stack (`true`) or unstack (`false`).

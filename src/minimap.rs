@@ -38,17 +38,27 @@ use crate::manager::{Display, Window};
 use crate::platform::Pid;
 
 /// Height of the minimap panel, in points.
-pub(crate) const MINIMAP_HEIGHT: f64 = 78.0;
+pub(crate) const MINIMAP_HEIGHT: f64 = 70.0;
 /// Gap between the minimap and the bottom of the usable screen area.
 pub(crate) const MINIMAP_BOTTOM_MARGIN: f64 = 24.0;
 /// The minimap never grows past this share of the display width.
 const MAX_WIDTH_RATIO: f64 = 0.8;
-const PANEL_PADDING: f64 = 12.0;
-const TILE_GAP: f64 = 3.0;
-const ICON_SIZE: f64 = 42.0;
-/// Room for a column's tile: its icon, a little padding either side, and the
-/// gap to the next tile.
-const SLOT_WIDTH: f64 = ICON_SIZE + 2.0 * 7.5 + TILE_GAP;
+/// Space around the tiles, inside the panel. Half a gap more sits at the
+/// left and right ends, where the outer tiles keep their share of it.
+const PANEL_PADDING: f64 = 5.0;
+const PANEL_RADIUS: f64 = 16.0;
+const TILE_GAP: f64 = 9.0;
+const TILE_WIDTH: f64 = 68.0;
+const TILE_RADIUS: f64 = 10.0;
+const ICON_SIZE: f64 = 30.0;
+/// Room for a column's tile and the gap to the next one.
+const SLOT_WIDTH: f64 = TILE_WIDTH + TILE_GAP;
+/// Icon strength for a column that is off screen.
+const OFF_SCREEN_ICON_ALPHA: f64 = 0.4;
+/// The focus colour: the teal of the default focus border.
+const FOCUS_RED: f64 = 0x5A as f64 / 255.0;
+const FOCUS_GREEN: f64 = 0xC5 as f64 / 255.0;
+const FOCUS_BLUE: f64 = 0xC9 as f64 / 255.0;
 /// The last part of the timeout the minimap spends fading out.
 const FADE_SECONDS: f32 = 0.3;
 
@@ -72,56 +82,34 @@ pub struct MinimapSnapshot {
 /// Where everything lands inside the panel, in points from its left edge.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MinimapGeometry {
-    /// `(x, width)` of each column's tile.
+    /// `(x, width)` of each column's slot, gap included.
     pub tiles: Vec<(f64, f64)>,
-    /// `(x, width)` of the visible-range outline.
-    pub viewport: (f64, f64),
     /// Width of the whole panel.
     pub width: f64,
 }
 
 /// Gives every column a [`SLOT_WIDTH`] slot, whatever its width, shrinking
-/// the slots when they would make the panel wider than `max_width`. The
-/// visible-range outline maps onto the slots: a column half on screen has
-/// half its slot inside the outline.
+/// the slots when they would make the panel wider than `max_width`.
 pub(crate) fn minimap_geometry(snapshot: &MinimapSnapshot, max_width: f64) -> MinimapGeometry {
     let columns = &snapshot.columns;
-    if columns.is_empty() {
-        return MinimapGeometry {
-            tiles: Vec::new(),
-            viewport: (PANEL_PADDING, SLOT_WIDTH),
-            width: SLOT_WIDTH + 2.0 * PANEL_PADDING,
-        };
-    }
-
     #[allow(clippy::cast_precision_loss)]
     let count = columns.len() as f64;
     let available = (max_width - 2.0 * PANEL_PADDING).max(1.0);
-    let slot = SLOT_WIDTH.min(available / count);
-    #[allow(clippy::cast_precision_loss)]
-    let slot_start = |index: usize| PANEL_PADDING + index as f64 * slot;
-    let to_panel = |x: i32| {
-        for (index, column) in columns.iter().enumerate() {
-            if x <= column.x {
-                return slot_start(index);
-            }
-            if x < column.x + column.width {
-                let fraction = f64::from(x - column.x) / f64::from(column.width.max(1));
-                return slot_start(index) + fraction * slot;
-            }
-        }
-        slot_start(columns.len())
-    };
-
-    let (view_min, view_max) = snapshot.viewport;
-    let view_start = to_panel(view_min);
+    let slot = SLOT_WIDTH.min(available / count.max(1.0));
     MinimapGeometry {
+        #[allow(clippy::cast_precision_loss)]
         tiles: (0..columns.len())
-            .map(|index| (slot_start(index), slot))
+            .map(|index| (PANEL_PADDING + index as f64 * slot, slot))
             .collect(),
-        viewport: (view_start, to_panel(view_max) - view_start),
         width: count * slot + 2.0 * PANEL_PADDING,
     }
+}
+
+/// Whether most of `column` is inside the visible range `viewport`.
+pub(crate) fn column_on_screen(column: &MinimapColumn, viewport: (i32, i32)) -> bool {
+    let (view_min, view_max) = viewport;
+    let overlap = (column.x + column.width).min(view_max) - column.x.max(view_min);
+    overlap * 2 >= column.width.max(1)
 }
 
 /// When the minimap is up, and why.
@@ -358,11 +346,11 @@ struct Tile {
     rect: NSRect,
     icon: Option<Retained<NSImage>>,
     focused: bool,
+    on_screen: bool,
 }
 
 struct MinimapViewIvars {
     tiles: Vec<Tile>,
-    viewport: NSRect,
     /// Where clicks go; `None` when the minimap is not interactive.
     events: Option<EventSender>,
 }
@@ -382,25 +370,58 @@ define_class!(
             let alpha = CGFloat::from;
             let bounds = self.bounds();
 
-            NSColor::colorWithSRGBRed_green_blue_alpha(0.12, 0.12, 0.12, alpha(0.88)).setFill();
-            let radius = bounds.size.height / 4.0;
-            let panel =
-                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(bounds, radius, radius);
+            NSColor::colorWithSRGBRed_green_blue_alpha(0.11, 0.11, 0.12, alpha(0.9)).setFill();
+            let panel = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(
+                bounds,
+                PANEL_RADIUS,
+                PANEL_RADIUS,
+            );
             panel.fill();
-            NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, alpha(0.15)).setStroke();
+            NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, alpha(0.12)).setStroke();
             panel.setLineWidth(1.0);
             panel.stroke();
 
             for tile in &ivars.tiles {
-                let fill = if tile.focused { 0.30 } else { 0.08 };
-                NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, alpha(fill)).setFill();
-                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(tile.rect, 9.0, 9.0)
-                    .fill();
+                let (fill, border, line_width) = if tile.focused {
+                    (
+                        NSColor::colorWithSRGBRed_green_blue_alpha(
+                            FOCUS_RED, FOCUS_GREEN, FOCUS_BLUE, 0.16,
+                        ),
+                        NSColor::colorWithSRGBRed_green_blue_alpha(
+                            FOCUS_RED, FOCUS_GREEN, FOCUS_BLUE, 1.0,
+                        ),
+                        2.0,
+                    )
+                } else {
+                    (
+                        NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.06),
+                        NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.10),
+                        1.0,
+                    )
+                };
+                // Inset by half the line so the border stays inside the tile.
+                let inset = line_width / 2.0;
+                let rect = NSRect::new(
+                    NSPoint::new(tile.rect.origin.x + inset, tile.rect.origin.y + inset),
+                    NSSize::new(
+                        tile.rect.size.width - line_width,
+                        tile.rect.size.height - line_width,
+                    ),
+                );
+                let path =
+                    NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(rect, TILE_RADIUS, TILE_RADIUS);
+                fill.setFill();
+                path.fill();
+                border.setStroke();
+                path.setLineWidth(line_width);
+                path.stroke();
 
                 let Some(icon) = &tile.icon else {
                     continue;
                 };
-                let size = ICON_SIZE.min(tile.rect.size.width - 6.0);
+                let size = ICON_SIZE
+                    .min(tile.rect.size.width - 12.0)
+                    .min(tile.rect.size.height - 12.0);
                 if size < 12.0 {
                     continue;
                 }
@@ -415,15 +436,13 @@ define_class!(
                     icon_rect,
                     NSRect::ZERO,
                     NSCompositingOperation::SourceOver,
-                    alpha(1.0),
+                    if tile.on_screen {
+                        1.0
+                    } else {
+                        OFF_SCREEN_ICON_ALPHA
+                    },
                 );
             }
-
-            NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, alpha(0.7)).setStroke();
-            let outline =
-                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(ivars.viewport, 12.0, 12.0);
-            outline.setLineWidth(2.0);
-            outline.stroke();
         }
 
         #[unsafe(method(acceptsFirstMouse:))]
@@ -513,25 +532,23 @@ impl MinimapManager {
         }
 
         let geometry = minimap_geometry(snapshot, max_width);
-        let tile_height = MINIMAP_HEIGHT - 2.0 * PANEL_PADDING;
+        // The same space above and below the tiles as at the panel's ends.
+        let edge = PANEL_PADDING + TILE_GAP / 2.0;
+        let tile_height = MINIMAP_HEIGHT - 2.0 * edge;
         let tiles = snapshot
             .columns
             .iter()
             .zip(&geometry.tiles)
             .map(|(column, &(x, width))| Tile {
                 rect: NSRect::new(
-                    NSPoint::new(x + TILE_GAP / 2.0, PANEL_PADDING),
+                    NSPoint::new(x + TILE_GAP / 2.0, edge),
                     NSSize::new((width - TILE_GAP).max(1.0), tile_height),
                 ),
                 icon: column.pid.and_then(|pid| self.icon(pid)),
                 focused: column.focused,
+                on_screen: column_on_screen(column, snapshot.viewport),
             })
             .collect();
-        let (view_x, view_width) = geometry.viewport;
-        let viewport = NSRect::new(
-            NSPoint::new(view_x, PANEL_PADDING / 2.0),
-            NSSize::new(view_width, MINIMAP_HEIGHT - PANEL_PADDING),
-        );
 
         let size = NSSize::new(geometry.width, MINIMAP_HEIGHT);
         let screen_height = crate::overlay::primary_screen_height(self.mtm);
@@ -547,7 +564,6 @@ impl MinimapManager {
             NSRect::new(NSPoint::new(0.0, 0.0), size),
             MinimapViewIvars {
                 tiles,
-                viewport,
                 events: interactive.then(|| self.events.clone()),
             },
         );
@@ -599,7 +615,10 @@ fn make_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<NSPanel> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MinimapColumn, MinimapSnapshot, PANEL_PADDING, SLOT_WIDTH, minimap_geometry};
+    use super::{
+        MinimapColumn, MinimapSnapshot, PANEL_PADDING, SLOT_WIDTH, column_on_screen,
+        minimap_geometry,
+    };
 
     fn column(x: i32, width: i32) -> MinimapColumn {
         MinimapColumn {
@@ -615,7 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn every_column_gets_one_icon_slot() {
+    fn every_column_gets_one_tile_slot() {
         let snapshot = MinimapSnapshot {
             columns: vec![column(-1000, 1000), column(0, 500), column(500, 2000)],
             viewport: (0, 1000),
@@ -635,19 +654,6 @@ mod tests {
     }
 
     #[test]
-    fn outline_covers_the_on_screen_share_of_each_slot() {
-        let snapshot = MinimapSnapshot {
-            columns: vec![column(-1000, 1000), column(0, 500), column(500, 2000)],
-            viewport: (0, 1000),
-        };
-        let geometry = minimap_geometry(&snapshot, 10_000.0);
-        // Starts where the second column does and takes a quarter of the
-        // third, which is 500 of its 2000 on screen.
-        assert!(close(geometry.viewport.0, PANEL_PADDING + SLOT_WIDTH));
-        assert!(close(geometry.viewport.1, 1.25 * SLOT_WIDTH));
-    }
-
-    #[test]
     fn long_strips_shrink_to_fit() {
         let snapshot = MinimapSnapshot {
             columns: (0..40).map(|i| column(i * 1000, 1000)).collect(),
@@ -659,13 +665,15 @@ mod tests {
     }
 
     #[test]
-    fn empty_strip_shows_only_the_viewport() {
-        let snapshot = MinimapSnapshot {
-            columns: Vec::new(),
-            viewport: (100, 1100),
-        };
-        let geometry = minimap_geometry(&snapshot, 10_000.0);
-        assert_eq!(geometry.tiles, []);
-        assert!(close(geometry.viewport.0, PANEL_PADDING));
+    fn a_column_counts_as_on_screen_when_most_of_it_is() {
+        let viewport = (0, 1000);
+        assert!(column_on_screen(&column(0, 500), viewport));
+        assert!(column_on_screen(&column(600, 800), viewport), "half in");
+        assert!(
+            !column_on_screen(&column(800, 800), viewport),
+            "a quarter in"
+        );
+        assert!(!column_on_screen(&column(-1000, 1000), viewport));
+        assert!(!column_on_screen(&column(1000, 500), viewport));
     }
 }

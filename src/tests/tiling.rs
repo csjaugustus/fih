@@ -1263,3 +1263,31 @@ fn auto_fill_leaves_a_resized_window_alone() {
         "a window the user resized keeps its width"
     );
 }
+
+#[test]
+fn reset_widths_sets_every_column_to_half_the_display() {
+    let mut harness = TestHarness::new().with_windows(3);
+    harness.advance(Duration::from_millis(100));
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::Command {
+            command: Command::Window(Operation::FullWidth),
+        });
+    harness.advance(Duration::from_millis(500));
+
+    harness
+        .app
+        .world_mut()
+        .write_message::<Event>(Event::Command {
+            command: Command::Window(Operation::ResetWidths),
+        });
+    harness.advance(Duration::from_millis(500));
+    for window_id in 0..3 {
+        assert_eq!(
+            auto_fill_window_width(harness.world(), window_id),
+            TEST_DISPLAY_WIDTH / 2,
+            "window {window_id} should be half the display"
+        );
+    }
+}

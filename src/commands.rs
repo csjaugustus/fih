@@ -119,7 +119,7 @@ pub fn register_commands(app: &mut bevy::app::App) {
             full_width_window,
             to_next_display,
             equalize_column,
-            balance_strip,
+            (balance_strip, reset_strip_widths),
             manage_window,
             stack_windows_handler,
             command_move_focus,
@@ -1523,6 +1523,56 @@ fn balance_strip(
     }
 
     commands.reshuffle_around(focused_entity);
+}
+
+/// Sets every column in the active strip to half the display width, the way
+/// the menu's "Reset 50% Widths" asks for.
+fn reset_strip_widths(
+    mut messages: MessageReader<Event>,
+    windows: Windows,
+    active_display: ActiveDisplay,
+    config: Res<Config>,
+    mut commands: Commands,
+) {
+    if filter_window_operations(&mut messages, |op| matches!(op, Operation::ResetWidths))
+        .next()
+        .is_none()
+    {
+        return;
+    }
+
+    // Ratios are of the display's usable width, as `resize_window` takes them;
+    // a pinned window caps how wide a column can get.
+    let display_width = active_display
+        .display()
+        .edge_bounds(active_display.dock(), &config)
+        .width();
+    let viewport_width = active_display.actual_bounds(&config).width();
+    let half_width = round_px(f64::from(display_width) * 0.5).min(viewport_width);
+
+    let strip = active_display.active_strip();
+    let mut anchor = None;
+    for column in strip.columns() {
+        if matches!(column, Column::Fullscren(_)) {
+            continue;
+        }
+        for entity in column.window_iter() {
+            if windows.full_width(entity).is_some()
+                && let Ok(mut cmds) = commands.get_entity(entity)
+            {
+                cmds.try_remove::<FullWidthMarker>();
+            }
+            if let Some(size) = windows.size(entity) {
+                commands.resize_entity(entity, size.with_x(half_width));
+                anchor.get_or_insert(entity);
+            }
+        }
+    }
+
+    // Keep the focused window in view while the strip settles.
+    if let Some(entity) = windows.focused().map(|(_, entity)| entity).or(anchor) {
+        commands.reshuffle_around(entity);
+    }
 }
 
 /// Slides the strip so the focused window is fully visible, snapping to the
