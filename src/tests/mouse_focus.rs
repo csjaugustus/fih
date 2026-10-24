@@ -195,7 +195,7 @@ fn keyboard_focus_warps_mouse_to_centered_window() {
                 assert!((center.x - TEST_DISPLAY_WIDTH / 2).abs() <= 2,
                     "window should have finished centering: {center:?}");
                 let cursor = state.cursor_position();
-                assert!((cursor.x - center.x).abs() <= 2 && window.frame().contains(cursor),
+                assert!(window.frame().contains(cursor),
                     "speed {speed}: pointer {cursor:?} was left behind after window {window_id} centered at {center:?}");
             });
         }
@@ -242,10 +242,10 @@ fn keyboard_focus_warps_mouse_without_auto_center() {
                 let window = world.query::<&Window>().iter(world)
                     .find(|window| window.id() == window_id)
                     .expect("focused window");
-                let center = window.frame().center();
+                let frame = window.frame();
                 let cursor = state.cursor_position();
-                assert!((cursor - center).abs().max_element() <= 2,
-                    "speed {speed}: pointer {cursor:?} missed focused window {window_id} at {center:?}");
+                assert!(frame.contains(cursor),
+                    "speed {speed}: pointer {cursor:?} missed focused window {window_id} at {frame:?}");
             });
         }
         harness.run(commands);
@@ -323,10 +323,10 @@ fn virtual_workspace_focus_warps_mouse_to_restored_window() {
                 let window = world.query::<&Window>().iter(world)
                     .find(|window| window.id() == window_id)
                     .expect("restored window");
-                let center = window.frame().center();
+                let frame = window.frame();
                 let cursor = state.cursor_position();
-                assert!((cursor - center).abs().max_element() <= 2,
-                    "animations {animations}: pointer {cursor:?} missed restored window {window_id} at {center:?}");
+                assert!(frame.contains(cursor),
+                    "animations {animations}: pointer {cursor:?} missed restored window {window_id} at {frame:?}");
             });
         }
         harness.run(commands);
@@ -370,6 +370,57 @@ fn focus_leaves_a_pointer_already_on_the_window_alone() {
             },
             Event::Command {
                 command: Command::Window(Operation::Focus(Direction::Nth(1))),
+            },
+        ]);
+}
+
+/// Keyboard focus carries the pointer to the same relative spot in the new
+/// window, rather than its centre.
+#[test]
+fn keyboard_focus_keeps_the_pointer_relative_place() {
+    let config: Config = (
+        MainOptions {
+            mouse_follows_focus: Some(true),
+            focus_follows_mouse: Some(false),
+            auto_center: Some(false),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(2)
+        .on_iteration(0, |world, state| {
+            let mut focused = world
+                .query_filtered::<&Window, bevy::ecs::query::With<crate::ecs::FocusedMarker>>();
+            let frame = focused.single(world).expect("a focused window").frame();
+            // A quarter across, three quarters down.
+            state.set_cursor_position(
+                frame.min + Origin::new(frame.width() / 4, frame.height() * 3 / 4),
+            );
+        })
+        .on_iteration(2, |world, state| {
+            let mut focused = world
+                .query_filtered::<&Window, bevy::ecs::query::With<crate::ecs::FocusedMarker>>();
+            let frame = focused.single(world).expect("a focused window").frame();
+            let cursor = state.cursor_position();
+            let across = f64::from(cursor.x - frame.min.x) / f64::from(frame.width());
+            let down = f64::from(cursor.y - frame.min.y) / f64::from(frame.height());
+            assert!(
+                (across - 0.25).abs() < 0.03 && (down - 0.75).abs() < 0.03,
+                "pointer {cursor:?} should sit a quarter across, three quarters down {frame:?}"
+            );
+        })
+        .run(vec![
+            Event::Command {
+                command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::Focus(Direction::First)),
+            },
+            Event::Command {
+                command: Command::Window(Operation::Focus(Direction::East)),
             },
         ]);
 }

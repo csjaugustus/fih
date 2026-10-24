@@ -1860,6 +1860,14 @@ fn test_mid_strip_insertion_preserves_window_x() {
     let previous_offset = std::rc::Rc::new(std::cell::RefCell::new(0));
     let previous_offset2 = previous_offset.clone();
     harness
+        // The pointer rests on the focused window, as it would after using it:
+        // the swipe below re-reads what is under the pointer.
+        .on_iteration(0, |world, state| {
+            let mut focused = world.query_filtered::<&Window, With<crate::ecs::FocusedMarker>>();
+            if let Ok(window) = focused.single(world) {
+                state.set_cursor_position(window.frame().center());
+            }
+        })
         .on_iteration(10, move |world, _state| {
             let mut q =
                 world.query_filtered::<(&Window, &Position), With<crate::ecs::FocusedMarker>>();

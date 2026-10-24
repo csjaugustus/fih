@@ -326,7 +326,7 @@ fn test_mouse_to_next_display() {
         .on_iteration(1, move |world, state| {
             let entity = find_window_entity(100, world);
             let window = world.get::<Window>(entity).expect("need window");
-            assert_eq!(state.cursor_position(), window.frame().center());
+            assert!(window.frame().contains(state.cursor_position()));
         })
         .on_iteration(3, move |world, state| {
             let mut query = world.query::<(&Display, Option<&DockPosition>)>();
