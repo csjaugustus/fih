@@ -37,7 +37,7 @@ use crate::events::{Event, InputEvent};
 use crate::manager::{
     Application, Display, Process, Window, WindowManager, WindowOS, bruteforce_windows,
 };
-use crate::minimap::{MINIMAP_BOTTOM_MARGIN, MINIMAP_HEIGHT, MinimapState};
+use crate::minimap::{MINIMAP_BOTTOM_MARGIN, MinimapState};
 use crate::overlay::{FlashMessageManager, OverlayManager};
 use crate::platform::input::TapHealth;
 use crate::platform::{PlatformCallbacks, WinID};
@@ -1245,11 +1245,9 @@ pub(crate) fn update_flash_messages(
     let (display, dock) = *active_display;
     let bounds = display.edge_bounds(dock, &config);
     // Sit above the minimap rather than on top of it.
-    let lift = if minimap.on_screen() {
-        MINIMAP_HEIGHT + MINIMAP_BOTTOM_MARGIN / 2.0
-    } else {
-        0.0
-    };
+    let lift = minimap
+        .on_screen()
+        .map_or(0.0, |height| height + MINIMAP_BOTTOM_MARGIN / 2.0);
     let bottom_center = NSPoint::new(
         f64::from(bounds.min.x + bounds.max.x) / 2.0,
         f64::from(bounds.max.y) - lift,

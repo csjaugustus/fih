@@ -271,6 +271,10 @@ pub enum Operation {
     /// binding keeps meaning exactly that, unconditionally. A no-op on any
     /// other direction.
     FocusOrVirtual(Direction),
+    /// North/South only: switches to the previous/next virtual workspace that
+    /// has windows, skipping empty ones and never creating one. A no-op when
+    /// there is none that way, or on any other direction.
+    VirtualOccupied(Direction),
     /// Selects a virtual strip by its zero-based index for the current workspace.
     VirtualNumber(u32),
     /// Creates a new empty virtual strip after the highest existing one for

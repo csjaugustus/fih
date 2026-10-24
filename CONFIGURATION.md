@@ -136,7 +136,7 @@ workspace_popup_status = true
 
 ### `[decorations.minimap]`
 
-A row of app icons along the bottom of the screen, one tile per column of the current strip. The focused column's tile is outlined in teal, and the icons of columns that are off screen are dimmed. It comes up briefly whenever a window command (focus, swap, resize, workspace switch, ...) or a swipe moves around the strip, and stays up while toggled on with `strip_show`. While the minimap is up, workspace and pin messages appear just above it.
+A row of app icons along the bottom of the screen, one tile per column of the current strip, with the workspace number at its left. The focused column's tile is outlined in teal, and the icons of columns that are off screen are dimmed. Moving around the strip (focus, swap, resize, ...) or swiping shows the current workspace's row. Switching workspaces shows a row for every workspace that has windows, the current one outlined in teal and the others dimmed; clicking a tile in another row switches to that workspace. With the minimap on, it takes the place of the workspace number popup. It stays up while toggled on with `strip_show`, and pin messages appear just above it.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -321,6 +321,7 @@ Virtual workspaces can also be navigated using trackpad gestures. If `[swipe.ges
 | :--- | :--- |
 | `window_virtual_north` / `_south` / `_first` / `_last` | Switch to the previous/next or first/last virtual workspace (row of windows), unconditionally. `_east` or `_west` are aliases for `_north` and `_south`. |
 | `window_virtualfocus_north` / `_south` | Like `window_virtual_north`/`_south`, but if the focused window is in a stack and has a neighbor above/below, focuses that neighbor instead of switching — the same within-column traversal as `window_focus_north`/`_south`. Only switches the virtual workspace once there's nothing left to focus that way. No `_east`/`_west`/`_first`/`_last` form (there's no "focus" reading to pair with those). |
+| `window_virtualopen_north` / `_south` | Switch to the previous/next virtual workspace that has windows, skipping empty ones. Never creates a workspace: at the first or last one with windows, it does nothing. |
 | `window_virtualnum_<number>` | Switch directly to the numbered virtual workspace. |
 | `window_virtualmove_north` / `_south` / `_first` / `_last` | Move currently focused window to the previous/next or first/last virtual workspace and follow it. `_east` or `_west` are aliases for `_north` and `_south`. |
 | `window_virtualsend_north` / `_south` / `_first` / `_last` | Move currently focused window to the previous/next or first/last virtual workspace but stay on the current one. `_east` or `_west` are aliases for `_north` and `_south`. |

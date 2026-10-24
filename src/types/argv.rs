@@ -120,6 +120,7 @@ fn parse_operation(argv: &[&str]) -> Result<Operation> {
         // No numeric form: "focus a stack neighbor, else switch" only makes
         // sense paired with a direction.
         "virtualfocus" => Operation::FocusOrVirtual(Direction::parse(argument()?)?),
+        "virtualopen" => Operation::VirtualOccupied(Direction::parse(argument()?)?),
         "virtualnum" => Operation::VirtualNumber(parse_virtual_workspace_number(argument()?)?),
         "virtualadd" => Operation::VirtualAdd,
         "virtualmove" => virtual_target(
@@ -226,6 +227,9 @@ impl Operation {
             Operation::ToggleTabbedDisplay => owned(&["tabbeddisplay"]),
             Operation::Snap => owned(&["snap"]),
             Operation::Virtual(direction) => vec!["virtual".to_string(), direction.token()],
+            Operation::VirtualOccupied(direction) => {
+                vec!["virtualopen".to_string(), direction.token()]
+            }
             Operation::FocusOrVirtual(direction) => {
                 vec!["virtualfocus".to_string(), direction.token()]
             }
@@ -295,6 +299,8 @@ mod tests {
             Operation::Virtual(Direction::First),
             Operation::FocusOrVirtual(Direction::North),
             Operation::FocusOrVirtual(Direction::South),
+            Operation::VirtualOccupied(Direction::North),
+            Operation::VirtualOccupied(Direction::South),
             Operation::VirtualNumber(2),
             Operation::VirtualMove(Direction::East, MoveFocus::Follow),
             Operation::VirtualMove(Direction::East, MoveFocus::Stay),

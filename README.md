@@ -67,19 +67,18 @@ Hold ⌃⌥ (control + option). Add ⇧ to move window, not just look.
 
 | Key | Do |
 |---|---|
-| ⌃⌥ ← → ↑ ↓ | Go to next window |
-| ⌃⌥⇧ ← → ↑ ↓ | Move window |
+| ⌃⌥ ← → | Go to next window |
+| ⌃⌥ ↑ ↓ | Go to next workspace with window in it |
+| ⌃⌥⇧ ← → | Move window |
 | ⌥ 1–9 | Go to workspace 1–9. ⇧ = take window there |
 | ⌃⌥ R | Half or full |
-| ⌃⌥ = / − | Wider / thinner |
 | ⌃⌥ F | Fill screen |
 | ⌃⌥ C | Center |
 | ⌃⌥ P / ⌃⌥⇧ P | Pin left / right. Again = unpin |
 | ⌃⌥ T | Float. Again = back in strip |
-| ⌃⌥ S | Show strip map. Again = hide |
 | ⌃⌥ Q | Quit |
 
-Move around, little strip map show at bottom: one icon per window, box = what you see. Click icon, go there.
+Move around, little strip map show at bottom: one icon per window, workspace number at left. Teal = where you are. Faded = off screen. Go up or down workspace, map show every workspace with window, one row each. Click icon, go there.
 
 Chat and settings app (WeChat, Telegram, System Settings, QuickTime, Affinity Publisher) float, not go in strip.
 

@@ -783,7 +783,8 @@ fn flash_workspace_on_activation(
         }
         return;
     }
-    if switched && config.workspace_popup_status() {
+    // With the minimap on, its rows carry the workspace number instead.
+    if switched && config.workspace_popup_status() && !config.minimap_enabled() {
         commands.flash_message(format!("{}", strip.virtual_index + 1), 1.0);
     }
 }
@@ -1052,6 +1053,7 @@ fn switch_virtual_workspace_bind(
                 | Operation::VirtualNumber(_)
                 | Operation::VirtualAdd
                 | Operation::FocusOrVirtual(_)
+                | Operation::VirtualOccupied(_)
         )
     })
     .next() else {
@@ -1122,6 +1124,32 @@ fn switch_virtual_workspace_bind(
             }
         }
         Operation::Virtual(Direction::North | Direction::West) => current_index.saturating_sub(1),
+        // The next workspace with windows that way, leaving empty ones out.
+        Operation::VirtualOccupied(Direction::South) => {
+            let Some(index) = rows
+                .iter()
+                .enumerate()
+                .skip(current_index + 1)
+                .find(|(_, (_, strip, _))| !strip.all_windows().is_empty())
+                .map(|(index, _)| index)
+            else {
+                return;
+            };
+            index
+        }
+        Operation::VirtualOccupied(Direction::North) => {
+            let Some(index) = rows
+                .iter()
+                .enumerate()
+                .take(current_index)
+                .rev()
+                .find(|(_, (_, strip, _))| !strip.all_windows().is_empty())
+                .map(|(index, _)| index)
+            else {
+                return;
+            };
+            index
+        }
         Operation::Virtual(Direction::First) => 0,
         Operation::Virtual(Direction::Last) => rows.len().saturating_sub(1),
         Operation::VirtualNumber(target_virtual_index) => {

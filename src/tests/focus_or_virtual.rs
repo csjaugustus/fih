@@ -144,3 +144,52 @@ fn test_plain_virtual_south_switches_workspace_even_with_a_stack_sibling() {
         })
         .run(commands);
 }
+
+/// `virtualopen` steps through workspaces with windows only: an empty one in
+/// between is skipped, and the ends stay put rather than creating one.
+#[test]
+fn virtual_open_skips_empty_workspaces_and_stops_at_the_ends() {
+    use crate::commands::MoveFocus;
+
+    let virtual_command = |operation| Event::Command {
+        command: Command::Window(operation),
+    };
+    let commands = vec![
+        Event::MenuOpened { window_id: 0 },
+        // A window on workspace 3, an empty workspace 2, back on 1.
+        virtual_command(Operation::VirtualMoveNumber(2, MoveFocus::Stay)),
+        virtual_command(Operation::VirtualNumber(1)),
+        virtual_command(Operation::VirtualNumber(0)),
+        virtual_command(Operation::VirtualOccupied(Direction::South)),
+        virtual_command(Operation::VirtualOccupied(Direction::South)),
+        virtual_command(Operation::VirtualOccupied(Direction::North)),
+        virtual_command(Operation::VirtualOccupied(Direction::North)),
+    ];
+
+    TestHarness::new()
+        .with_windows(3)
+        .on_iteration(3, |world, _state| {
+            assert_eq!(active_virtual_index(world), 0);
+        })
+        .on_iteration(4, |world, _state| {
+            assert_eq!(
+                active_virtual_index(world),
+                2,
+                "the empty workspace 2 is skipped"
+            );
+        })
+        .on_iteration(5, |world, _state| {
+            assert_eq!(
+                active_virtual_index(world),
+                2,
+                "no workspace is created past the last"
+            );
+        })
+        .on_iteration(6, |world, _state| {
+            assert_eq!(active_virtual_index(world), 0);
+        })
+        .on_iteration(7, |world, _state| {
+            assert_eq!(active_virtual_index(world), 0);
+        })
+        .run(commands);
+}
