@@ -60,6 +60,22 @@ Sets the margins at the edges of the screen.
 
 ---
 
+## Columns (`[columns]`)
+
+How many columns of the screen width a workspace is laid out in until you pick one for it (menu bar **2 Columns** / **3 Columns**, or `window_columns_<count>`), by the kind of screen it is on. A workspace moving between screens follows each one's setting. A pick is remembered per workspace and per kind of screen, so one made on the laptop does not follow the workspace onto a monitor, and is kept across restarts.
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `builtin` | Integer | `2` | Columns on the Mac's own screen. |
+| `external` | Integer | `2` | Columns on an external monitor. |
+
+**Example:**
+```toml
+[columns]
+builtin = 2
+external = 3
+```
+
 ## 3. Swipe & Gestures (`[swipe]`)
 
 Configure trackpad gestures and scroll-wheel window sliding.

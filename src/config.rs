@@ -980,6 +980,24 @@ impl Config {
         self.inner().default_workspaces.unwrap_or(1).max(1)
     }
 
+    /// The columns configured for a workspace on the Mac's own screen
+    /// (`builtin`) or an external monitor, if `[columns]` sets them.
+    pub fn configured_columns(&self, builtin: bool) -> Option<u8> {
+        let columns = self.inner().columns?;
+        if builtin {
+            columns.builtin
+        } else {
+            columns.external
+        }
+        .map(|count| count.clamp(1, 6))
+    }
+
+    /// The columns a workspace is laid out in until one is chosen for it.
+    pub fn default_columns(&self, builtin: bool) -> u8 {
+        const DEFAULT_COLUMNS: u8 = 2;
+        self.configured_columns(builtin).unwrap_or(DEFAULT_COLUMNS)
+    }
+
     pub fn auto_fill_width(&self) -> bool {
         self.options()
             .auto_fill_width
@@ -1216,6 +1234,17 @@ struct InnerConfig {
     swipe: Option<swipe::SwipeOptions>,
     padding: Option<padding::PaddingOptions>,
     restore: Option<RestoreOptions>,
+    columns: Option<ColumnsOptions>,
+}
+
+/// How many columns of the screen width a workspace is laid out in until one
+/// is chosen for it, by the kind of display it is on.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+pub struct ColumnsOptions {
+    /// The Mac's own screen. Default: 2.
+    pub builtin: Option<u8>,
+    /// Any external monitor. Default: 2.
+    pub external: Option<u8>,
 }
 
 impl InnerConfig {

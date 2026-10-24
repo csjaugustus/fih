@@ -9,12 +9,13 @@
 use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
-use bevy::ecs::query::Changed;
+use bevy::ecs::query::{Changed, Or};
 use bevy::ecs::system::{Commands, Query, Res};
 use bevy::ecs::world::Ref;
 use bevy::prelude::Component;
 
 use crate::config::Config;
+use crate::ecs::columns::ColumnChoices;
 use crate::ecs::layout::{Column, LayoutStrip};
 use crate::ecs::params::Windows;
 use crate::ecs::{DockPosition, SpawnCommandsExt};
@@ -81,19 +82,26 @@ pub(crate) fn plan_auto_fill(columns: &[FillColumn], target: i32) -> Vec<(Entity
         .collect()
 }
 
-/// Whether a strip changed, or a window's width intent did, since auto-fill
-/// last ran.
+/// Strips that changed, or moved to another display.
+type MovedOrChangedStrips<'w, 's> = Query<'w, 's, (), Or<(Changed<LayoutStrip>, Changed<ChildOf>)>>;
+
+/// Whether a strip changed or moved display, a window's width intent changed,
+/// or the column choices or config did, since auto-fill last ran.
 pub(crate) fn fill_inputs_changed(
-    strips: Query<(), Changed<LayoutStrip>>,
+    strips: MovedOrChangedStrips,
     intents: Query<(), Changed<WidthIntent>>,
+    choices: Res<ColumnChoices>,
+    config: Res<Config>,
 ) -> bool {
-    !strips.is_empty() || !intents.is_empty()
+    !strips.is_empty() || !intents.is_empty() || choices.is_changed() || config.is_changed()
 }
 
 /// Resizes the filling windows of every strip that changed, or holds a window
 /// whose intent changed, as [`plan_auto_fill`] says.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn auto_fill_widths(
-    strips: Query<(Ref<LayoutStrip>, &ChildOf)>,
+    strips: Query<(Ref<LayoutStrip>, Ref<ChildOf>)>,
+    choices: Res<ColumnChoices>,
     changed_intents: Query<Entity, Changed<WidthIntent>>,
     intents: Query<&WidthIntent>,
     displays: Query<(&Display, Option<&DockPosition>)>,
@@ -101,8 +109,15 @@ pub(crate) fn auto_fill_widths(
     config: Res<Config>,
     mut commands: Commands,
 ) {
+    // A new column choice or config can change any strip's columns.
+    let everything = choices.is_changed() || config.is_changed();
     for (strip, child_of) in &strips {
-        if !strip.is_changed() && !changed_intents.iter().any(|entity| strip.contains(entity)) {
+        // Moving to another display can change its columns too.
+        if !everything
+            && !strip.is_changed()
+            && !child_of.is_changed()
+            && !changed_intents.iter().any(|entity| strip.contains(entity))
+        {
             continue;
         }
         let Ok((display, dock)) = displays.get(child_of.parent()) else {
@@ -139,7 +154,12 @@ pub(crate) fn auto_fill_widths(
             .iter()
             .filter(|column| column.single && column.intent == WidthIntent::Fill)
             .count();
-        let target = fill_width(filling, strip.column_count(), edge_width, viewport_width);
+        let target = fill_width(
+            filling,
+            choices.count(&strip, display.is_builtin(), &config),
+            edge_width,
+            viewport_width,
+        );
         for (entity, width) in plan_auto_fill(&fill_columns, target) {
             let Some(frame) = windows.frame(entity) else {
                 continue;

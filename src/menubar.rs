@@ -1078,9 +1078,11 @@ pub(crate) fn menu_bar_dirty(
         || strips_removed
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_menu_bar(
     active_display: ActiveDisplay,
     workspaces: Query<&LayoutStrip>,
+    choices: Res<crate::ecs::columns::ColumnChoices>,
     windows: Windows,
     apps: Query<&Application>,
     config: Res<Config>,
@@ -1122,7 +1124,7 @@ pub fn update_menu_bar(
     menu_bar.update(
         strip.virtual_index,
         &summaries,
-        strip.column_count(),
+        choices.count(strip, active_display.display().is_builtin(), &config),
         &config,
     );
 }

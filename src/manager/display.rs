@@ -28,6 +28,8 @@ pub struct Display {
     /// Width reserved at the right (`true`) or left edge for the active
     /// strip's pinned window, kept in sync by the layout.
     pin_inset: Option<(bool, i32)>,
+    /// The Mac's own screen, rather than an external monitor.
+    builtin: bool,
 }
 
 impl Display {
@@ -51,7 +53,20 @@ impl Display {
             menubar_height_override: None,
             notch_height: 0,
             pin_inset: None,
+            builtin: false,
         }
+    }
+
+    /// Marks the display as the Mac's own screen (or not).
+    #[must_use]
+    pub fn with_builtin(mut self, builtin: bool) -> Self {
+        self.builtin = builtin;
+        self
+    }
+
+    /// Whether this is the Mac's own screen, rather than an external monitor.
+    pub fn is_builtin(&self) -> bool {
+        self.builtin
     }
 
     /// Converts a `CGDirectDisplayID` to a `CFUUID` string.

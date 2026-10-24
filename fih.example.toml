@@ -25,6 +25,13 @@ animation_speed = 20
 # --- Tabs ---
 disable_native_tabs = false
 
+# Columns a workspace is laid out in until you pick 2 or 3 for it in the menu
+# bar: on the Mac's own screen, and on an external monitor. A pick is kept per
+# workspace and per kind of screen.
+[columns]
+builtin = 2
+external = 3
+
 # 4px to the screen edges; the window rule below adds 4px more, so 8px gaps.
 [padding]
 top = 4

@@ -17,6 +17,7 @@ mod query;
 use crate::config::Config;
 use crate::config::snippet::{RuleSubject, SnippetDialect, window_rule_snippet};
 use crate::ecs::autofill::{WidthIntent, fill_width};
+use crate::ecs::columns::ColumnChoices;
 use crate::ecs::display::FloatingLayer;
 use crate::ecs::focus::{FocusHistory, PageHapticRequest};
 use crate::ecs::layout::{
@@ -76,6 +77,7 @@ struct PagingFocusParams<'w, 's> {
 pub fn register_commands(app: &mut bevy::app::App) {
     app.init_resource::<crate::menubar::MenuBarVisibility>()
         .init_resource::<crate::minimap::MinimapState>()
+        .init_resource::<crate::ecs::columns::ColumnChoices>()
         .add_systems(
             PreUpdate,
             (
@@ -87,9 +89,13 @@ pub fn register_commands(app: &mut bevy::app::App) {
         )
         .add_systems(
             PostUpdate,
-            crate::menubar::save_menu_bar_preference
-                .in_set(crate::ecs::PostUpdateSet::Bookkeeping)
-                .run_if(resource_changed::<crate::menubar::MenuBarVisibility>),
+            (
+                crate::menubar::save_menu_bar_preference
+                    .run_if(resource_changed::<crate::menubar::MenuBarVisibility>),
+                crate::ecs::columns::save_column_choices
+                    .run_if(resource_changed::<crate::ecs::columns::ColumnChoices>),
+            )
+                .in_set(crate::ecs::PostUpdateSet::Bookkeeping),
         );
     // Registered here (not with the Lua systems) so it's exercised by the mock
     // harness without a running interpreter.
@@ -877,6 +883,7 @@ fn resize_window(
     mut messages: MessageReader<Event>,
     windows: Windows,
     active_display: ActiveDisplay,
+    choices: Res<ColumnChoices>,
     config: Res<Config>,
     mut commands: Commands,
 ) {
@@ -913,7 +920,11 @@ fn resize_window(
     let current_ratio = f64::from(frame.width()) / f64::from(display_width);
     // A workspace laid out in columns keeps to them: one column wide, or the
     // full width. Until a column count is chosen, the configured presets.
-    let widths = match active_display.active_strip().chosen_column_count() {
+    let builtin = active_display.display().is_builtin();
+    let columns = choices
+        .chosen(active_display.active_strip(), builtin)
+        .or_else(|| config.configured_columns(builtin));
+    let widths = match columns {
         Some(count) => vec![1.0 / f64::from(count), 1.0],
         None => config.preset_column_widths(),
     };
@@ -1572,6 +1583,7 @@ fn strip_columns_and_widths(
     mut messages: MessageReader<Event>,
     windows: Windows,
     mut active_display: ActiveDisplayMut,
+    mut choices: ResMut<ColumnChoices>,
     config: Res<Config>,
     mut commands: Commands,
 ) {
@@ -1582,12 +1594,13 @@ fn strip_columns_and_widths(
     }) {
         match operation {
             Operation::SetColumns(count) => {
+                let builtin = active_display.display().is_builtin();
                 let strip = active_display.active_strip();
                 // Auto-fill resizes the filling windows for the new count itself.
-                if strip.column_count() != *count && !config.auto_fill_width() {
+                if choices.count(strip, builtin, &config) != *count && !config.auto_fill_width() {
                     reset.get_or_insert(true);
                 }
-                strip.set_column_count(*count);
+                choices.choose(strip, builtin, *count);
             }
             _ => reset = Some(false),
         }
@@ -1603,10 +1616,12 @@ fn strip_columns_and_widths(
         .edge_bounds(active_display.dock(), &config)
         .width();
     let viewport_width = active_display.actual_bounds(&config).width();
+    let builtin = active_display.display().is_builtin();
+    let columns = choices.count(active_display.active_strip(), builtin, &config);
     let strip = active_display.active_strip();
     let width = fill_width(
         strip.columns().count(),
-        strip.column_count(),
+        columns,
         display_width,
         viewport_width,
     );

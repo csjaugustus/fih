@@ -40,6 +40,7 @@ use crate::overlay::{FlashMessageManager, OverlayManager};
 use crate::platform::{Modifiers, PlatformCallbacks, WinID, WorkspaceId};
 
 pub mod autofill;
+pub mod columns;
 pub mod display;
 pub mod focus;
 pub mod layout;
@@ -312,7 +313,8 @@ pub fn register_systems(app: &mut bevy::app::App) {
             crate::menubar::update_menu_bar.run_if(
                 crate::menubar::menu_bar_dirty
                     .or_eager(resource_changed::<Config>)
-                    .or_eager(resource_changed::<crate::menubar::MenuBarVisibility>),
+                    .or_eager(resource_changed::<crate::menubar::MenuBarVisibility>)
+                    .or_eager(resource_changed::<columns::ColumnChoices>),
             ),
         )
             .in_set(PostUpdateSet::Ui),
@@ -916,6 +918,7 @@ pub fn setup_bevy_app(sender: EventSender, receiver: Receiver<Event>) -> Result<
     app.set_runner(autorelease_runner);
 
     crate::menubar::load_menu_bar_preference(&mut app);
+    columns::load_column_choices(&mut app);
     let menu_events = sender.clone();
     let mut platform_callbacks = PlatformCallbacks::new(sender);
     let initial_config = platform_callbacks.setup_handlers()?;
