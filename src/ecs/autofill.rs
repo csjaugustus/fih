@@ -50,15 +50,23 @@ pub(crate) struct FillColumn {
     pub width: i32,
 }
 
-/// The width each filling window gets with `windows` of them in a strip laid
-/// out in `columns` columns: an equal share of the screen, but never less
-/// than a column. `edge` is the display's usable width the shares are of,
-/// `full` the viewport a window may fill.
-pub(crate) fn fill_width(windows: usize, columns: u8, edge: i32, full: i32) -> i32 {
-    let share = windows.clamp(1, usize::from(columns.max(1)));
+/// The width each of `windows` filling windows gets in a strip laid out in
+/// `columns` columns, beside other windows `others` wide: a column, or more
+/// when that would leave the screen part empty, the filling windows then
+/// sharing what the others leave. `edge` is the display's usable width the
+/// columns are of, `full` the viewport a window may fill.
+pub(crate) fn fill_width(windows: usize, columns: u8, edge: i32, full: i32, others: i32) -> i32 {
     #[allow(clippy::cast_precision_loss)]
-    let width = round_px(f64::from(edge) / share as f64);
-    if share == 1 { full } else { width.min(full) }
+    let windows = windows.max(1) as f64;
+    let column = f64::from(edge) / f64::from(columns.max(1));
+    let share = f64::from((edge - others).max(0)) / windows;
+    let width = round_px(column.max(share));
+    // Within a pixel or two of the viewport is all of it.
+    if width >= full - TOLERANCE {
+        full
+    } else {
+        width
+    }
 }
 
 /// The intent of a window that had none, such as one already open when fih
@@ -150,15 +158,15 @@ pub(crate) fn auto_fill_widths(
             })
             .collect::<Vec<_>>();
 
-        let filling = fill_columns
+        let (filling, others): (Vec<&FillColumn>, Vec<&FillColumn>) = fill_columns
             .iter()
-            .filter(|column| column.single && column.intent == WidthIntent::Fill)
-            .count();
+            .partition(|column| column.single && column.intent == WidthIntent::Fill);
         let target = fill_width(
-            filling,
-            choices.count(&strip, display.is_builtin(), &config),
+            filling.len(),
+            choices.count(&strip, &display.screen(), &config),
             edge_width,
             viewport_width,
+            others.iter().map(|column| column.width).sum(),
         );
         for (entity, width) in plan_auto_fill(&fill_columns, target) {
             let Some(frame) = windows.frame(entity) else {
@@ -192,14 +200,23 @@ mod tests {
     #[test]
     fn windows_share_the_screen_down_to_a_column() {
         // Two columns: full, then halves however many there are.
-        assert_eq!(fill_width(1, 2, FULL, FULL), FULL);
-        assert_eq!(fill_width(2, 2, FULL, FULL), HALF);
-        assert_eq!(fill_width(5, 2, FULL, FULL), HALF);
+        assert_eq!(fill_width(1, 2, FULL, FULL, 0), FULL);
+        assert_eq!(fill_width(2, 2, FULL, FULL, 0), HALF);
+        assert_eq!(fill_width(5, 2, FULL, FULL, 0), HALF);
         // Three columns: full, halves, then thirds.
-        assert_eq!(fill_width(1, 3, FULL, FULL), FULL);
-        assert_eq!(fill_width(2, 3, FULL, FULL), HALF);
-        assert_eq!(fill_width(3, 3, FULL, FULL), THIRD);
-        assert_eq!(fill_width(4, 3, FULL, FULL), THIRD);
+        assert_eq!(fill_width(1, 3, FULL, FULL, 0), FULL);
+        assert_eq!(fill_width(2, 3, FULL, FULL, 0), HALF);
+        assert_eq!(fill_width(3, 3, FULL, FULL, 0), THIRD);
+        assert_eq!(fill_width(4, 3, FULL, FULL, 0), THIRD);
+    }
+
+    #[test]
+    fn beside_other_windows_filling_ones_take_only_the_empty_space() {
+        // A full-width window leaves no empty space: filling ones are a column.
+        assert_eq!(fill_width(2, 3, FULL, FULL, FULL), THIRD);
+        assert_eq!(fill_width(1, 2, FULL, FULL, FULL), HALF);
+        // A narrower window leaves room the filling one takes.
+        assert_eq!(fill_width(1, 3, FULL, FULL, THIRD), 2 * THIRD);
     }
 
     #[test]

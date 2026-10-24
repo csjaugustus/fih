@@ -522,7 +522,9 @@ pub struct MenuBarManager {
     menu: Retained<NSMenu>,
     action_target: Retained<MenuActionTarget>,
     /// The workspaces the menu was last built for, with the active one.
-    menu_workspaces: Option<(u32, Vec<WorkspaceSummary>, u8)>,
+    /// What the menu was last built for: the active workspace, every
+    /// workspace's apps, and its column count and screen.
+    menu_workspaces: Option<(u32, Vec<WorkspaceSummary>, u8, String)>,
     current_content: Option<MenuBarContent>,
     visible: bool,
 }
@@ -614,16 +616,17 @@ impl MenuBarManager {
         virtual_index: u32,
         workspaces: &[WorkspaceSummary],
         columns: u8,
+        screen_name: &str,
         config: &Config,
     ) {
-        if self
-            .menu_workspaces
-            .as_ref()
-            .is_none_or(|(index, shown, shown_columns)| {
-                *index != virtual_index || shown != workspaces || *shown_columns != columns
-            })
-        {
-            self.rebuild_menu(virtual_index, workspaces, columns);
+        let menu = (
+            virtual_index,
+            workspaces.to_vec(),
+            columns,
+            screen_name.to_owned(),
+        );
+        if self.menu_workspaces.as_ref() != Some(&menu) {
+            self.rebuild_menu(virtual_index, workspaces, columns, screen_name);
         }
 
         let current = config.workspace_menu_status().then_some(virtual_index);
@@ -640,7 +643,13 @@ impl MenuBarManager {
         self.show_workspaces(config, current, &all);
     }
 
-    fn rebuild_menu(&mut self, virtual_index: u32, workspaces: &[WorkspaceSummary], columns: u8) {
+    fn rebuild_menu(
+        &mut self,
+        virtual_index: u32,
+        workspaces: &[WorkspaceSummary],
+        columns: u8,
+        screen_name: &str,
+    ) {
         self.menu.removeAllItems();
 
         let status = self.add_item("fih — Running", None);
@@ -675,8 +684,11 @@ impl MenuBarManager {
             open_config.setToolTip(Some(&NSString::from_str(&path.display().to_string())));
         }
 
-        // The current workspace's columns, and resetting its windows to one.
+        // The current workspace's columns on this screen, and resetting its
+        // full-width windows.
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
+        let heading = self.add_item(&format!("Columns on {screen_name}"), None);
+        heading.setEnabled(false);
         let picker = NSMenuItem::new(self.mtm);
         picker.setView(Some(&ColumnPicker::new(
             self.mtm,
@@ -688,7 +700,12 @@ impl MenuBarManager {
 
         self.menu.addItem(&NSMenuItem::separatorItem(self.mtm));
         self.add_item("Quit fih", Some(sel!(quitPaneru:)));
-        self.menu_workspaces = Some((virtual_index, workspaces.to_vec(), columns));
+        self.menu_workspaces = Some((
+            virtual_index,
+            workspaces.to_vec(),
+            columns,
+            screen_name.to_owned(),
+        ));
     }
 
     fn add_item(&self, title: &str, action: Option<objc2::runtime::Sel>) -> Retained<NSMenuItem> {
@@ -1124,7 +1141,8 @@ pub fn update_menu_bar(
     menu_bar.update(
         strip.virtual_index,
         &summaries,
-        choices.count(strip, active_display.display().is_builtin(), &config),
+        choices.count(strip, &active_display.display().screen(), &config),
+        active_display.display().name(),
         &config,
     );
 }

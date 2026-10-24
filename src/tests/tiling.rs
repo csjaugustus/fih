@@ -1265,9 +1265,17 @@ fn auto_fill_leaves_a_resized_window_alone() {
 }
 
 #[test]
-fn reset_widths_sets_every_column_to_half_the_display() {
+fn reset_widths_brings_full_width_windows_back_and_leaves_the_rest() {
     let mut harness = TestHarness::new().with_windows(3);
     harness.advance(Duration::from_millis(100));
+    let focused = |harness: &mut TestHarness| {
+        let world = harness.world();
+        let mut query = world
+            .query_filtered::<(&crate::manager::Window, Entity), With<crate::ecs::FocusedMarker>>();
+        let (window, _) = query.single(world).expect("a focused window");
+        (window.id(), window.frame().width())
+    };
+    let (full_id, _) = focused(&mut harness);
     harness
         .app
         .world_mut()
@@ -1275,6 +1283,7 @@ fn reset_widths_sets_every_column_to_half_the_display() {
             command: Command::Window(Operation::FullWidth),
         });
     harness.advance(Duration::from_millis(500));
+    assert_eq!(focused(&mut harness).1, TEST_DISPLAY_WIDTH);
 
     harness
         .app
@@ -1284,10 +1293,15 @@ fn reset_widths_sets_every_column_to_half_the_display() {
         });
     harness.advance(Duration::from_millis(500));
     for window_id in 0..3 {
+        let expected = if window_id == full_id {
+            TEST_DISPLAY_WIDTH / 2
+        } else {
+            TEST_WINDOW_WIDTH
+        };
         assert_eq!(
             auto_fill_window_width(harness.world(), window_id),
-            TEST_DISPLAY_WIDTH / 2,
-            "window {window_id} should be half the display"
+            expected,
+            "window {window_id}"
         );
     }
 }
@@ -1523,13 +1537,14 @@ fn a_window_made_full_on_purpose_keeps_its_width() {
     // Window 1 has focus: toggle it up to full width, on purpose.
     command(&mut harness, Operation::Resize(ResizeDirection::Grow));
     assert_eq!(width(&mut harness, 1), TEST_DISPLAY_WIDTH);
+    let third = TEST_DISPLAY_WIDTH / 3;
     assert_eq!(
         width(&mut harness, 0),
-        TEST_DISPLAY_WIDTH,
-        "the one window left filling takes the screen"
+        third,
+        "beside a full-width window there is no empty space: a column"
     );
 
-    // A new window shares with window 0; window 1 stays full.
+    // A new window is a column too; window 1 stays full.
     spawn_runtime_window(&mut harness, 2);
     harness.advance(Duration::from_millis(500));
     assert_eq!(
@@ -1539,16 +1554,20 @@ fn a_window_made_full_on_purpose_keeps_its_width() {
     );
     assert_eq!(
         [width(&mut harness, 0), width(&mut harness, 2)],
+        [third, third]
+    );
+
+    // A column change leaves it too; the others take the new column.
+    command(&mut harness, Operation::SetColumns(2));
+    assert_eq!(width(&mut harness, 1), TEST_DISPLAY_WIDTH);
+    assert_eq!(
+        [width(&mut harness, 0), width(&mut harness, 2)],
         [half, half]
     );
 
-    // A column change leaves it too.
-    command(&mut harness, Operation::SetColumns(2));
-    assert_eq!(width(&mut harness, 1), TEST_DISPLAY_WIDTH);
-
-    // Closing a filling window: the other fills the gap.
+    // Closing a filling window leaves the other a column.
     close_runtime_window(&mut harness, 2);
-    assert_eq!(width(&mut harness, 0), TEST_DISPLAY_WIDTH);
+    assert_eq!(width(&mut harness, 0), half);
     assert_eq!(width(&mut harness, 1), TEST_DISPLAY_WIDTH);
 
     // Reset widths makes every window fill again.

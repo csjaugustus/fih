@@ -920,10 +920,10 @@ fn resize_window(
     let current_ratio = f64::from(frame.width()) / f64::from(display_width);
     // A workspace laid out in columns keeps to them: one column wide, or the
     // full width. Until a column count is chosen, the configured presets.
-    let builtin = active_display.display().is_builtin();
+    let screen = active_display.display().screen();
     let columns = choices
-        .chosen(active_display.active_strip(), builtin)
-        .or_else(|| config.configured_columns(builtin));
+        .chosen(active_display.active_strip(), &screen)
+        .or_else(|| config.configured_columns(screen.builtin));
     let widths = match columns {
         Some(count) => vec![1.0 / f64::from(count), 1.0],
         None => config.preset_column_widths(),
@@ -1575,10 +1575,11 @@ fn balance_strip(
     commands.reshuffle_around(focused_entity);
 }
 
-/// Lays the active workspace out in columns, and resets its widths to fill
-/// the screen down to a column (see [`fill_width`]). "Reset Widths" resets
-/// every window; switching to a different column count leaves full-width
-/// windows, which are full width on purpose.
+/// Lays the active workspace out in columns, and resets widths. "Reset
+/// Widths" sets every full-width window in the workspace back to the width it
+/// should have now (see [`fill_width`]) and leaves the rest. Without
+/// auto-fill, switching to a different column count resizes the windows that
+/// are not full width.
 fn strip_columns_and_widths(
     mut messages: MessageReader<Event>,
     windows: Windows,
@@ -1587,25 +1588,27 @@ fn strip_columns_and_widths(
     config: Res<Config>,
     mut commands: Commands,
 ) {
-    // `Some(true)` keeps full-width windows, `Some(false)` resets them too.
+    // `Some(true)` resizes the windows that are not full width (a new column
+    // count without auto-fill), `Some(false)` only the full-width ones (Reset
+    // Widths: everything full width goes back to the width it should have).
     let mut reset = None;
     for operation in filter_window_operations(&mut messages, |op| {
         matches!(op, Operation::SetColumns(_) | Operation::ResetWidths)
     }) {
         match operation {
             Operation::SetColumns(count) => {
-                let builtin = active_display.display().is_builtin();
+                let screen = active_display.display().screen();
                 let strip = active_display.active_strip();
                 // Auto-fill resizes the filling windows for the new count itself.
-                if choices.count(strip, builtin, &config) != *count && !config.auto_fill_width() {
+                if choices.count(strip, &screen, &config) != *count && !config.auto_fill_width() {
                     reset.get_or_insert(true);
                 }
-                choices.choose(strip, builtin, *count);
+                choices.choose(strip, &screen, *count);
             }
             _ => reset = Some(false),
         }
     }
-    let Some(keep_full_width) = reset else {
+    let Some(not_full_width) = reset else {
         return;
     };
 
@@ -1616,14 +1619,15 @@ fn strip_columns_and_widths(
         .edge_bounds(active_display.dock(), &config)
         .width();
     let viewport_width = active_display.actual_bounds(&config).width();
-    let builtin = active_display.display().is_builtin();
-    let columns = choices.count(active_display.active_strip(), builtin, &config);
+    let screen = active_display.display().screen();
+    let columns = choices.count(active_display.active_strip(), &screen, &config);
     let strip = active_display.active_strip();
     let width = fill_width(
         strip.columns().count(),
         columns,
         display_width,
         viewport_width,
+        0,
     );
     // A pixel or two short of the viewport still reads as full width.
     let is_full_width = |entity| {
@@ -1638,7 +1642,7 @@ fn strip_columns_and_widths(
         if matches!(column, Column::Fullscren(_)) {
             continue;
         }
-        if keep_full_width && column.window_iter().any(is_full_width) {
+        if column.window_iter().any(is_full_width) == not_full_width {
             continue;
         }
         for entity in column.window_iter() {

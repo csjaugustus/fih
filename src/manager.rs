@@ -32,7 +32,7 @@ use crate::platform::{ConnID, Pid, ProcessSerialNumber, WinID, WorkspaceId};
 use crate::util::{AXUIWrapper, MacResult, create_array, round_px, symlink_target};
 use app::ApplicationOS;
 pub use app::{Application, ApplicationApi};
-pub use display::Display;
+pub use display::{Display, Screen};
 pub use process::{Process, ProcessApi};
 pub use skylight::AXUIElementCopyAttributeValue;
 use skylight::{
@@ -387,9 +387,21 @@ impl WindowManagerApi for WindowManagerOS {
                     .and_then(|uuid| self.display_space_list(uuid.as_ref()))
                     .ok()?;
 
+                let uuid = Display::uuid_from_id(id)
+                    .map_or_else(|_| id.to_string(), |uuid| uuid.to_string());
+                let name = objc2::MainThreadMarker::new()
+                    .and_then(|mtm| {
+                        crate::util::read_screen_property(
+                            &objc2_app_kit::NSScreen::screens(mtm),
+                            id,
+                            |screen| screen.localizedName().to_string(),
+                        )
+                    })
+                    .unwrap_or_default();
                 Some((
                     Display::new(id, irect_from(bounds), menubar_height.cast_signed())
-                        .with_builtin(CGDisplayIsBuiltin(id)),
+                        .with_builtin(CGDisplayIsBuiltin(id))
+                        .with_identity(uuid, name),
                     workspaces,
                 ))
             })

@@ -30,6 +30,17 @@ pub struct Display {
     pin_inset: Option<(bool, i32)>,
     /// The Mac's own screen, rather than an external monitor.
     builtin: bool,
+    /// A stable identity for the screen, kept across reboots and replugging.
+    uuid: String,
+    /// The screen's name as macOS shows it, e.g. "Built-in Retina Display".
+    name: String,
+}
+
+/// Which screen a workspace is on, as column choices are kept by.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Screen {
+    pub uuid: String,
+    pub builtin: bool,
 }
 
 impl Display {
@@ -54,6 +65,35 @@ impl Display {
             notch_height: 0,
             pin_inset: None,
             builtin: false,
+            uuid: id.to_string(),
+            name: String::new(),
+        }
+    }
+
+    /// Gives the display its stable identity and name.
+    #[must_use]
+    pub fn with_identity(mut self, uuid: String, name: String) -> Self {
+        self.uuid = uuid;
+        self.name = name;
+        self
+    }
+
+    /// The screen's name as macOS shows it, or a generic one.
+    pub fn name(&self) -> &str {
+        if !self.name.is_empty() {
+            &self.name
+        } else if self.builtin {
+            "Built-in Display"
+        } else {
+            "External Display"
+        }
+    }
+
+    /// Which screen this is, as column choices are kept by.
+    pub fn screen(&self) -> Screen {
+        Screen {
+            uuid: self.uuid.clone(),
+            builtin: self.builtin,
         }
     }
 
@@ -62,11 +102,6 @@ impl Display {
     pub fn with_builtin(mut self, builtin: bool) -> Self {
         self.builtin = builtin;
         self
-    }
-
-    /// Whether this is the Mac's own screen, rather than an external monitor.
-    pub fn is_builtin(&self) -> bool {
-        self.builtin
     }
 
     /// Converts a `CGDirectDisplayID` to a `CFUUID` string.
