@@ -1333,6 +1333,33 @@ pub(super) fn apply_window_positions(
     }
 }
 
+/// Splits a config watcher event into the paths that need a reload and the
+/// paths that are gone for good and should no longer be watched.
+fn classify_config_event(event: &notify::Event) -> (Vec<&std::path::Path>, Vec<&std::path::Path>) {
+    let (present, missing): (Vec<_>, Vec<_>) = event
+        .paths
+        .iter()
+        .map(std::path::PathBuf::as_path)
+        .partition(|path| path.exists());
+    match &event.kind {
+        EventKind::Modify(
+            // When using the RecommendedWatcher, the event triggers on file data.
+            // When using PollWatcher, it triggers on modification time.
+            ModifyKind::Metadata(MetadataKind::WriteTime)
+            | ModifyKind::Data(DataChange::Content)
+            // Saving by writing a new file and renaming it over the old one can
+            // reach us as nothing more than a rename or create for the path,
+            // with no content flag, so those count as changes too.
+            | ModifyKind::Name(_),
+        )
+        | EventKind::Create(_) => (present, Vec::new()),
+        // Such a replace removes the old file but leaves the path in place:
+        // reload what is still there, stop watching only what is really gone.
+        EventKind::Remove(_) => (present, missing),
+        _ => (Vec::new(), Vec::new()),
+    }
+}
+
 pub(super) fn refresh_configuration_trigger(
     mut messages: MessageReader<Event>,
     window_manager: Res<WindowManager>,
@@ -1342,6 +1369,8 @@ pub(super) fn refresh_configuration_trigger(
     mut displays: Query<&mut Display>,
     applications: Query<&Application>,
 ) {
+    // One save can arrive as several events; reload each file once.
+    let mut changed: Vec<std::path::PathBuf> = Vec::new();
     for event in messages.read() {
         let Event::ConfigRefresh(event) = event else {
             continue;
@@ -1351,59 +1380,55 @@ pub(super) fn refresh_configuration_trigger(
             continue;
         };
 
-        match &event.kind {
-            EventKind::Modify(
-                // When using the RecommendedWatcher, the event triggers on file data.
-                // When using PollWatcher, it triggers on modification time.
-                ModifyKind::Metadata(MetadataKind::WriteTime)
-                | ModifyKind::Data(DataChange::Content),
-            ) => (),
-            EventKind::Remove(_) => {
-                for path in &event.paths {
-                    _ = watcher.unwatch(path).inspect_err(|err| {
-                        error!("unwatching the config '{}': {err}", path.display());
-                    });
-                }
-                continue;
-            }
-            _ => continue,
-        }
-
-        // An init.lua disables the TOML path entirely, so there is nothing here
-        // to reload — see `CONFIGURATION_FILE`.
-        if crate::config::CONFIGURATION_FILE.is_none() {
-            continue;
-        }
-
-        for path in &event.paths {
-            // The Lua init script shares this watcher and `ConfigRefresh` event;
-            // it is reloaded separately by `lua_reload_system`. Skip it here so
-            // we never try to TOML-parse a Lua file.
-            if path
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
-            {
-                continue;
-            }
-            if let Some(symlink) = symlink_target(path) {
-                debug!(
-                    "symlink '{}' changed, replacing the watcher.",
-                    symlink.display()
-                );
-                if let Some(new_watcher) =
-                    crate::ecs::rewatch_configs(&window_manager, path.as_path())
-                {
-                    **watcher = new_watcher;
-                }
-            }
-            info!("Reloading configuration file; {}", path.display());
-            _ = config.reload_config(path.as_path()).inspect_err(|err| {
-                error!("loading config '{}': {err}", path.display());
+        let (reload, gone) = classify_config_event(event);
+        for path in gone {
+            _ = watcher.unwatch(path).inspect_err(|err| {
+                error!("unwatching the config '{}': {err}", path.display());
             });
         }
-
-        apply_config_side_effects(&config, &mut displays, &windows, &applications);
+        for path in reload {
+            if !changed.iter().any(|known| known == path) {
+                changed.push(path.to_path_buf());
+            }
+        }
     }
+
+    // An init.lua disables the TOML path entirely, so there is nothing here
+    // to reload — see `CONFIGURATION_FILE`.
+    if changed.is_empty() || crate::config::CONFIGURATION_FILE.is_none() {
+        return;
+    }
+    let Some(ref mut watcher) = watcher else {
+        return;
+    };
+
+    for path in &changed {
+        // The Lua init script shares this watcher and `ConfigRefresh` event;
+        // it is reloaded separately by `lua_reload_system`. Skip it here so
+        // we never try to TOML-parse a Lua file.
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
+        {
+            continue;
+        }
+        if let Some(symlink) = symlink_target(path) {
+            debug!(
+                "symlink '{}' changed, replacing the watcher.",
+                symlink.display()
+            );
+            if let Some(new_watcher) = crate::ecs::rewatch_configs(&window_manager, path.as_path())
+            {
+                **watcher = new_watcher;
+            }
+        }
+        info!("Reloading configuration file; {}", path.display());
+        _ = config.reload_config(path.as_path()).inspect_err(|err| {
+            error!("loading config '{}': {err}", path.display());
+        });
+    }
+
+    apply_config_side_effects(&config, &mut displays, &windows, &applications);
 }
 
 pub(super) fn window_removal_trigger(
@@ -1532,5 +1557,62 @@ where
         Ordering::Greater
     } else {
         Ordering::Equal
+    }
+}
+
+#[cfg(test)]
+mod config_event_tests {
+    use super::classify_config_event;
+    use notify::event::{AccessKind, CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
+    use notify::{Event, EventKind};
+    use std::path::{Path, PathBuf};
+
+    fn temp_config(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "raven-config-event-{name}-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "[options]\n").unwrap();
+        path
+    }
+
+    fn event(kind: EventKind, path: &Path) -> Event {
+        Event::new(kind).add_path(path.to_path_buf())
+    }
+
+    #[test]
+    fn content_and_replace_saves_reload() {
+        let path = temp_config("reload");
+        for kind in [
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            // An atomic save can report only these, with no content flag.
+            EventKind::Modify(ModifyKind::Name(RenameMode::Any)),
+            EventKind::Create(CreateKind::File),
+            EventKind::Remove(RemoveKind::File),
+        ] {
+            let event = event(kind, &path);
+            let (reload, gone) = classify_config_event(&event);
+            assert_eq!(reload, vec![path.as_path()], "{kind:?} should reload");
+            assert_eq!(gone, Vec::<&Path>::new(), "{kind:?} must keep watching");
+        }
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn a_deleted_config_stops_being_watched() {
+        let path = temp_config("deleted");
+        std::fs::remove_file(&path).unwrap();
+        let event = event(EventKind::Remove(RemoveKind::File), &path);
+        let (reload, gone) = classify_config_event(&event);
+        assert_eq!(reload, Vec::<&Path>::new());
+        assert_eq!(gone, vec![path.as_path()]);
+    }
+
+    #[test]
+    fn reads_are_ignored() {
+        let path = temp_config("access");
+        let event = event(EventKind::Access(AccessKind::Any), &path);
+        assert_eq!(classify_config_event(&event), (Vec::new(), Vec::new()));
+        std::fs::remove_file(&path).unwrap();
     }
 }
