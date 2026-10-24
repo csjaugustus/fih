@@ -22,7 +22,7 @@
 
 ## How work
 
-Windows sit side by side on strip that goes right forever. Screen is little hole you look through. Swipe four fingers, or press key, strip slide. Window you want slide into hole.
+Windows sit side by side on strip that goes right forever. Screen is little hole you look through. Swipe four fingers, or press key, strip slide. Window you want swim into hole. Quick, like fih.
 
 Need one window always there? Pin it. It hold left or right half. Rest of strip slide in other half.
 
