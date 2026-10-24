@@ -31,7 +31,7 @@ use crate::ecs::{
     VerifyWindowSize,
 };
 use crate::events::Event;
-use crate::manager::{Application, Display, Window, WindowManager};
+use crate::manager::{Application, Display, Window, WindowManager, origin_from};
 use crate::platform::WorkspaceId;
 
 const REFRESH_WINDOW_CHECK_FREQ_MS: u64 = 1000;
@@ -549,7 +549,16 @@ fn mouse_follows_focus(
         global_state.skip_reshuffle(),
         global_state.ffm_flag()
     );
+    // A focus change the pointer caused, such as a click into the window,
+    // leaves the pointer where it is: it is already on the window.
+    let pointer_on_window = windows.frame(entity).is_some_and(|frame| {
+        window_manager
+            .cursor_position()
+            .map(origin_from)
+            .is_some_and(|pointer| frame.contains(pointer))
+    });
     if config.mouse_follows_focus()
+        && !pointer_on_window
         && !global_state.skip_reshuffle()
         && global_state.ffm_flag().is_none_or(|id| id != window.id())
         && let Some(frame) = windows.moving_frame(entity)

@@ -278,7 +278,7 @@ fn keyboard_focus_does_not_warp_mouse_when_disabled() {
         .with_windows(3)
         .on_iteration(1, |world, state| {
             assert_focused!(world, 2);
-            assert_eq!(state.cursor_position(), Origin::ZERO);
+            assert_eq!(state.cursor_position(), MockState::CURSOR_START);
         })
         .run(commands);
 }
@@ -331,4 +331,45 @@ fn virtual_workspace_focus_warps_mouse_to_restored_window() {
         }
         harness.run(commands);
     }
+}
+
+/// Focus that lands on the window the pointer is already on (a click into
+/// it) must leave the pointer where it is, not pull it to the centre.
+#[test]
+fn focus_leaves_a_pointer_already_on_the_window_alone() {
+    let config: Config = (
+        MainOptions {
+            mouse_follows_focus: Some(true),
+            focus_follows_mouse: Some(false),
+            ..Default::default()
+        },
+        vec![],
+    )
+        .into();
+    let clicked = std::cell::Cell::new(Origin::ZERO);
+    let clicked = std::rc::Rc::new(clicked);
+    let set = clicked.clone();
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(2)
+        .on_iteration(0, move |world, state| {
+            let entity = find_window_entity(1, world);
+            let frame = world.get::<Window>(entity).unwrap().frame();
+            // Off-centre, as a click usually is.
+            let point = frame.min + Origin::new(10, 10);
+            state.set_cursor_position(point);
+            set.set(point);
+        })
+        .on_iteration(1, move |world, state| {
+            assert_focused!(world, 1);
+            assert_eq!(state.cursor_position(), clicked.get());
+        })
+        .run(vec![
+            Event::Command {
+                command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::Focus(Direction::Nth(1))),
+            },
+        ]);
 }

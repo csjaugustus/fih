@@ -76,6 +76,10 @@ struct MockDisplayData {
     workspaces: Vec<WorkspaceId>,
 }
 
+/// The pointer starts off every test window, so a keyboard focus change is
+/// never mistaken for one the pointer caused by already being on the window.
+const MOCK_CURSOR_START: Origin = Origin::new(-10_000, -10_000);
+
 /// The internal state of our "Virtual macOS".
 struct MockStateInner {
     apps: HashMap<Pid, MockAppData>,
@@ -108,7 +112,7 @@ impl MockState {
                 displays: HashMap::new(),
                 fullscreen_spaces: HashSet::new(),
                 active_display_id: 0,
-                cursor_position: Origin::ZERO,
+                cursor_position: MOCK_CURSOR_START,
                 event_queue: VecDeque::new(),
                 stale_window_ids: HashMap::new(),
                 unordered_windows: HashSet::new(),
@@ -429,8 +433,16 @@ impl MockState {
         });
     }
 
+    /// Where the pointer is before anything warps it.
+    pub const CURSOR_START: Origin = MOCK_CURSOR_START;
+
     pub fn cursor_position(&self) -> IVec2 {
         self.inner.force_read().cursor_position
+    }
+
+    /// Puts the pointer somewhere without a warp, as a user moving it would.
+    pub fn set_cursor_position(&self, position: Origin) {
+        self.inner.force_write().cursor_position = position;
     }
 
     // --- Mock Factory Methods ---
