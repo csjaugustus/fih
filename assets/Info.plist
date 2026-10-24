@@ -3,7 +3,7 @@
 <plist version="1.0">
   <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.github.karinushka.paneru</string>
+    <string>com.github.csjaugustus.fih</string>
     <key>CFBundleShortVersionString</key>
     <string>0.5.2</string>
     <key>CFBundlePackageType</key>

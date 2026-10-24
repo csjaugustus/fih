@@ -28,7 +28,15 @@ Need one window always there? Pin it. It hold left or right half. Rest of strip 
 
 ## Get
 
-Ready app go in [Releases](https://github.com/csjaugustus/fih/releases). Nothing yet. Fih still small.
+Ready app go in [Releases](https://github.com/csjaugustus/fih/releases).
+
+1. Open DMG. Drag fih into Applications.
+2. Open fih. Mac say no, fih not notarized. Go System Settings → Privacy & Security, scroll down, click **Open Anyway**.
+3. Mac ask for Accessibility. Say yes. Fih need it to move window.
+
+Fih live in menu bar now. Start by itself at login. New version? Replace app, open again.
+
+Go away: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to Bin.
 
 ### If you nerd
 
