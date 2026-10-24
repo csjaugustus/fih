@@ -187,7 +187,7 @@ fih showmenu
 
 This command shows the item in the running daemon and remembers the new choice. Lua scripts can use `paneru.showmenu()` and `paneru.hidemenu()`, or bind `showmenu` and `hidemenu` to keys. Choices are stored in `$XDG_STATE_HOME/paneru/menu-bar.json` (normally `~/.local/state/fih/menu-bar.json`); removing this file while fih is stopped restores the configuration's behavior.
 
-The menu itself has **Open Config File…**, which opens the configuration fih is using (`fih.toml`, or `init.lua` when a script is in charge) in your default text editor, and **Quit fih**.
+The menu lists every workspace that has windows, with the apps in it; pick one to switch there. It also has **Open Config File…**, which opens the configuration fih is using (`fih.toml`, or `init.lua` when a script is in charge) in your default text editor, and **Quit fih**.
 
 The permission setup menu remains visible until the required macOS access is granted.
 
@@ -206,7 +206,7 @@ Settings for the indicator component of the menubar display. The indicator compo
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `style` | String | `'mono'` | Whether the indicator displays all virtual workspaces `'multi'`, only your current workspace `'mono'`, or your current workspace over how many there are `'paged'` (`2 / 4`). |
+| `style` | String | `'occupied'` | `'occupied'` shows your current workspace and every workspace with windows, each in a rounded square (filled for the current one). `'multi'` shows all virtual workspaces, `'mono'` only your current one, and `'paged'` your current workspace over how many there are (`2 / 4`). |
 | `format` | String | `'default'` | The format of the character(s) which represent your virtual workspace(s).<br>Options are regular numbers `'default'`, Roman numerals `'roman'`, any pair of Unicode characters `'unicode'`, or the inactive Unicode character with the active workspace shown as its number `'marked'` (`· 2 · ·`). |
 | `font_size` | Float (2.0 to 24.0) | `13.0` | Font size of the indicator in point. |
 | `active_character` | Char | `'☉'` | The Unicode character which represents an active workspace in the `'unicode'` format. |
