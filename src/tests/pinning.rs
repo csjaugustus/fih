@@ -345,7 +345,7 @@ fn a_pinned_window_takes_one_column() {
         let mut strips = world.query::<&LayoutStrip>();
         let pin = strips
             .iter(world)
-            .find_map(|strip| strip.pinned())
+            .find_map(LayoutStrip::pinned)
             .expect("a pinned window");
         world
             .get::<crate::manager::Window>(pin.entity)

@@ -1079,8 +1079,10 @@ pub(super) fn update_overlays(
     let fills_screen = floating
         || windows.full_width(entity).is_some()
         || display.single().is_ok_and(|(display, dock)| {
-            let viewport = display.actual_display_bounds(dock, &config);
-            window.frame().width() >= viewport.width() - 2
+            // The whole usable width, not the strip's viewport: a pinned
+            // window narrows that, and a column beside it is no full width.
+            let edge = display.edge_bounds(dock, &config);
+            window.frame().width() >= edge.width() - 2
         });
     let border_params = if border_enabled && !fills_screen {
         if window_config_cache.window_id != Some(focused_window_id) || config.is_changed() {
