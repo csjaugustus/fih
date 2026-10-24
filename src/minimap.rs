@@ -205,6 +205,12 @@ impl MinimapState {
         }
     }
 
+    /// Whether the minimap shows every workspace's row, as when stepping up
+    /// or down through them, rather than just the current one.
+    pub fn shows_every_workspace(&self) -> bool {
+        self.mode == MinimapMode::Workspaces && !self.pinned
+    }
+
     pub fn visible(&self) -> bool {
         self.pinned
             || self
@@ -230,7 +236,8 @@ impl MinimapState {
 }
 
 /// Shows the minimap on commands that move around the strip (focus, swap,
-/// resize and the like) or between workspaces.
+/// resize and the like), or every workspace's row when stepping up or down
+/// through them.
 pub(crate) fn minimap_on_command(
     mut messages: MessageReader<Event>,
     config: Res<Config>,
@@ -239,10 +246,13 @@ pub(crate) fn minimap_on_command(
     let mode = messages.read().fold(None, |mode, event| match event {
         Event::Command {
             command: Command::Window(operation),
-        } if switches_workspace(operation) => Some(MinimapMode::Workspaces),
+        } if steps_through_workspaces(operation) => Some(MinimapMode::Workspaces),
+        // A jump to a numbered workspace shows the strip it lands on.
         Event::Command {
             command: Command::Window(operation),
-        } if navigates_strip(operation) => mode.or(Some(MinimapMode::Strip)),
+        } if navigates_strip(operation) || jumps_to_workspace(operation) => {
+            mode.or(Some(MinimapMode::Strip))
+        }
         _ => mode,
     });
     if let Some(mode) = mode {
@@ -250,17 +260,24 @@ pub(crate) fn minimap_on_command(
     }
 }
 
-/// Whether `operation` moves between virtual workspaces.
-fn switches_workspace(operation: &Operation) -> bool {
+/// Whether `operation` jumps straight to a workspace, by number or a new one.
+fn jumps_to_workspace(operation: &Operation) -> bool {
     matches!(
         operation,
-        Operation::Virtual(_)
-            | Operation::VirtualNumber(_)
-            | Operation::VirtualAdd
-            | Operation::VirtualOccupied(_)
+        Operation::VirtualNumber(_) | Operation::VirtualAdd | Operation::VirtualMoveNumber(_, _)
+    )
+}
+
+/// Whether `operation` steps up or down through the workspaces. A jump to a
+/// numbered workspace (`⌥ N`, the menu) is no stepping: it shows only the
+/// workspace it lands on.
+fn steps_through_workspaces(operation: &Operation) -> bool {
+    matches!(
+        operation,
+        Operation::VirtualOccupied(_)
+            | Operation::Virtual(_)
             | Operation::FocusOrVirtual(_)
             | Operation::VirtualMove(_, _)
-            | Operation::VirtualMoveNumber(_, _)
     )
 }
 
@@ -304,9 +321,9 @@ pub(crate) fn minimap_on_swipe(
     state.poke(&config, MinimapMode::Strip);
 }
 
-/// Ends a strip countdown when the workspace changes some other way than a
-/// workspace command (which shows every workspace instead): the old strip is
-/// about to go.
+/// Ends a strip countdown when the workspace changes other than by stepping
+/// up or down (which shows every workspace instead): the old strip is about
+/// to go.
 pub(crate) fn minimap_on_workspace_switch(
     _switched: Populated<(), Added<ActiveWorkspaceMarker>>,
     mut state: ResMut<MinimapState>,
@@ -389,7 +406,7 @@ pub(crate) fn update_minimap(
 
     let viewport = display.actual_display_bounds(dock, &config);
     let focused = focused.iter().next();
-    let workspaces = state.mode == MinimapMode::Workspaces && !state.pinned;
+    let workspaces = state.shows_every_workspace();
     let mut rows = strips
         .iter()
         .filter(|(strip, _, _, _, active)| *active || workspaces && strip.id() == active_strip.id())

@@ -68,7 +68,7 @@ fn strip_show_toggles_the_minimap() {
 }
 
 #[test]
-fn switching_workspaces_shows_the_minimap() {
+fn stepping_through_workspaces_shows_every_row_but_a_jump_shows_one() {
     let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
         .expect("config should parse");
 
@@ -76,14 +76,25 @@ fn switching_workspaces_shows_the_minimap() {
         .with_config(config)
         .with_windows(2)
         .on_iteration(1, |world, _state| {
+            let state = world.resource::<MinimapState>();
+            assert!(state.visible());
             assert!(
-                minimap_visible(world),
-                "a workspace switch shows every workspace's strip"
+                state.shows_every_workspace(),
+                "up / down shows every workspace's row"
+            );
+        })
+        .on_iteration(2, |world, _state| {
+            assert!(
+                !world.resource::<MinimapState>().shows_every_workspace(),
+                "a jump to a numbered workspace shows only that one"
             );
         })
         .run(vec![
             Event::Command {
                 command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::VirtualOccupied(Direction::South)),
             },
             Event::Command {
                 command: Command::Window(Operation::VirtualNumber(1)),
@@ -103,7 +114,7 @@ fn switching_workspaces_mid_navigation_keeps_the_minimap_up() {
         .on_iteration(2, |world, _state| {
             assert!(
                 minimap_visible(world),
-                "the switch turns the strip into every workspace's strip"
+                "stepping to another workspace turns the strip into every workspace's rows"
             );
         })
         .run(vec![
@@ -114,13 +125,43 @@ fn switching_workspaces_mid_navigation_keeps_the_minimap_up() {
                 command: Command::Window(Operation::Focus(Direction::First)),
             },
             Event::Command {
-                command: Command::Window(Operation::VirtualNumber(1)),
+                command: Command::Window(Operation::VirtualOccupied(Direction::South)),
             },
         ]);
 }
 
 #[test]
 fn the_minimap_replaces_the_workspace_number_popup() {
+    use crate::commands::MoveFocus;
+
+    let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
+        .expect("config should parse");
+
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(2)
+        .on_iteration(2, |world, _state| {
+            let mut messages = world.query::<&crate::ecs::FlashMessage>();
+            assert!(
+                messages.iter(world).next().is_none(),
+                "the minimap's rows show the number instead"
+            );
+        })
+        .run(vec![
+            Event::Command {
+                command: Command::PrintState,
+            },
+            Event::Command {
+                command: Command::Window(Operation::VirtualMoveNumber(1, MoveFocus::Stay)),
+            },
+            Event::Command {
+                command: Command::Window(Operation::VirtualNumber(1)),
+            },
+        ]);
+}
+
+#[test]
+fn jumping_to_an_empty_workspace_still_shows_its_number() {
     let config = Config::try_from("[decorations.minimap]\nenabled = true\n[bindings]\n")
         .expect("config should parse");
 
@@ -130,8 +171,8 @@ fn the_minimap_replaces_the_workspace_number_popup() {
         .on_iteration(1, |world, _state| {
             let mut messages = world.query::<&crate::ecs::FlashMessage>();
             assert!(
-                messages.iter(world).next().is_none(),
-                "the minimap's rows show the number instead"
+                messages.iter(world).any(|message| message.0 == "2"),
+                "an empty workspace has no strip to show its number"
             );
         })
         .run(vec![

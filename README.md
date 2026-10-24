@@ -35,7 +35,7 @@ One window, fih make it fill screen. Open second, both take half. Fih no make yo
 
 Move, little map show at bottom. One icon per window. Teal = where you are. Faded = off screen. Lock = pinned. Number at left = which workspace.
 
-Switch workspace, map show all workspace, one row each. Click icon, fih go there.
+Go up down, map show all workspace, one row each. Click icon, fih go there.
 
 ## Get
 
