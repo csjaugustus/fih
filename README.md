@@ -53,17 +53,17 @@ go up down, map show all workspace, one row each
 
 ## get
 
-ready app go in [releases](https://github.com/csjaugustus/fih/releases)
+ready app go in [Releases](https://github.com/csjaugustus/fih/releases)
 
-1. open dmg, drag fih into applications
-2. open fih, mac say no because fih not notarized, go system settings → privacy & security, scroll down, click **open anyway**
-3. mac ask for accessibility, say yes, fih need it to move window
+1. open DMG, drag fih into Applications
+2. open fih, Mac say no because fih not notarized, go System Settings → Privacy & Security, scroll down, click **Open Anyway**
+3. Mac ask for Accessibility, say yes, fih need it to move window
 
 fih live in menu bar now, start by itself at login, new version? replace app, open again
 
-or brew: `brew install csjaugustus/fih/fih`, then `fih install && fih start`, mac ask for accessibility, say yes, new version? `brew upgrade fih && fih restart`
+or brew: `brew install csjaugustus/fih/fih`, then `fih install && fih start`, Mac ask for Accessibility, say yes, new version? `brew upgrade fih && fih restart`
 
-how delete: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to bin
+how delete: `/Applications/fih.app/Contents/MacOS/fih uninstall`, then app to Bin
 
 ### if you nerd want tinker
 
@@ -74,7 +74,7 @@ cargo run                     # try
 cargo install --path .        # keep
 ```
 
-macos ask for accessibility, say yes (system settings → privacy & security), fih need it to move window
+macOS ask for Accessibility, say yes (System Settings → Privacy & Security), fih need it to move window
 
 run all time: `fih install && fih start`
 
@@ -95,14 +95,14 @@ hold ⌃⌥ (control + option), add ⇧ to move window, not just look
 | ⌃⌥ T | float, again = back in strip |
 | ⌃⌥ Q | quit |
 
-can whitelist app to float, not go in strip, e.g. telegram
+can whitelist app to float, not go in strip, e.g. Telegram
 
-want change any control or setting? open config file, not know how change? ask ai
+want change any control or setting? open config file, not know how change? ask AI
 
 ## where from
 
-fih is fork of [paneru](https://github.com/karinushka/paneru), paneru do hard part, fih add pin, snap, strip map, up-and-down strip, column, auto fill, and fish
+fih is fork of [Paneru](https://github.com/karinushka/paneru), Paneru do hard part, fih add pin, snap, strip map, up-and-down strip, column, auto fill, and fish
 
-readme talk like [caveman](https://github.com/juliusbrussee/caveman), good repo, make ai talk less too
+README talk like [caveman](https://github.com/juliusbrussee/caveman), good repo, make AI talk less too
 
-mit license
+MIT license
