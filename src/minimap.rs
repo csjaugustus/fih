@@ -363,7 +363,6 @@ struct Tile {
 struct MinimapViewIvars {
     tiles: Vec<Tile>,
     viewport: NSRect,
-    opacity: f32,
     /// Where clicks go; `None` when the minimap is not interactive.
     events: Option<EventSender>,
 }
@@ -379,7 +378,8 @@ define_class!(
         #[unsafe(method(drawRect:))]
         fn draw_rect(&self, _dirty_rect: NSRect) {
             let ivars = self.ivars();
-            let alpha = |value: f32| CGFloat::from(ivars.opacity * value);
+            // Drawn at full strength; the panel's own alpha does the fading.
+            let alpha = CGFloat::from;
             let bounds = self.bounds();
 
             NSColor::colorWithSRGBRed_green_blue_alpha(0.12, 0.12, 0.12, alpha(0.88)).setFill();
@@ -464,8 +464,9 @@ pub struct MinimapManager {
     events: EventSender,
     panel: Option<Retained<NSPanel>>,
     icons: HashMap<Pid, Option<Retained<NSImage>>>,
-    /// What is on screen, so an unchanged frame is not redrawn.
-    shown: Option<(MinimapSnapshot, f32, bool)>,
+    /// What is drawn, so an unchanged frame is not redrawn. Opacity is left
+    /// out: fading only changes the panel's alpha, which costs no redraw.
+    shown: Option<(MinimapSnapshot, bool)>,
 }
 
 impl MinimapManager {
@@ -480,6 +481,12 @@ impl MinimapManager {
     }
 
     fn icon(&mut self, pid: Pid) -> Option<Retained<NSImage>> {
+        // Kept across shows, since loading an app icon is slow; bounded so
+        // apps that come and go cannot grow it without end.
+        const MAX_CACHED_ICONS: usize = 64;
+        if self.icons.len() >= MAX_CACHED_ICONS && !self.icons.contains_key(&pid) {
+            self.icons.clear();
+        }
         self.icons
             .entry(pid)
             .or_insert_with(|| {
@@ -497,8 +504,11 @@ impl MinimapManager {
         max_width: f64,
         interactive: bool,
     ) {
-        let key = (snapshot.clone(), opacity, interactive);
+        let key = (snapshot.clone(), interactive);
         if self.shown.as_ref() == Some(&key) {
+            if let Some(panel) = &self.panel {
+                panel.setAlphaValue(CGFloat::from(opacity));
+            }
             return;
         }
 
@@ -538,7 +548,6 @@ impl MinimapManager {
             MinimapViewIvars {
                 tiles,
                 viewport,
-                opacity,
                 events: interactive.then(|| self.events.clone()),
             },
         );
@@ -547,6 +556,7 @@ impl MinimapManager {
             .panel
             .get_or_insert_with(|| make_panel(self.mtm, frame));
         panel.setIgnoresMouseEvents(!interactive);
+        panel.setAlphaValue(CGFloat::from(opacity));
         panel.setContentView(Some(&view));
         panel.setFrame_display(frame, true);
         panel.orderFront(None::<&AnyObject>);
@@ -558,8 +568,6 @@ impl MinimapManager {
             panel.orderOut(None::<&AnyObject>);
         }
         self.shown = None;
-        // Apps come and go; look their icons up afresh next time.
-        self.icons.clear();
     }
 }
 

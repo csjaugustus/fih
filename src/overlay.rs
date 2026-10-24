@@ -492,17 +492,35 @@ impl FlashMessageView {
 pub struct FlashMessageManager {
     mtm: MainThreadMarker,
     window: Option<Retained<NSWindow>>,
+    /// The message drawn and where, so a frame that only fades it changes the
+    /// window's alpha instead of redrawing it.
+    shown: Option<(String, (CGFloat, CGFloat))>,
 }
 
 impl FlashMessageManager {
     pub fn new(mtm: MainThreadMarker) -> Self {
-        Self { mtm, window: None }
+        Self {
+            mtm,
+            window: None,
+            shown: None,
+        }
     }
 
     #[allow(clippy::cast_precision_loss)]
     /// Shows `message` centred on `bottom_center_abs_cg` (absolute CG coords),
     /// sitting just above that point.
     pub fn show(&mut self, message: &str, opacity: f32, bottom_center_abs_cg: NSPoint) {
+        let key = (
+            message.to_owned(),
+            (bottom_center_abs_cg.x, bottom_center_abs_cg.y),
+        );
+        if let Some(window) = &self.window
+            && self.shown.as_ref() == Some(&key)
+        {
+            window.setAlphaValue(CGFloat::from(opacity));
+            return;
+        }
+
         let is_badge = message.chars().count() <= 2;
         let screen_h = primary_screen_height(self.mtm);
 
@@ -535,10 +553,11 @@ impl FlashMessageManager {
                 self.mtm,
                 NSRect::new(NSPoint::new(0.0, 0.0), size),
                 message,
-                opacity,
+                1.0,
                 is_badge,
             );
             window.setContentView(Some(&view));
+            window.setAlphaValue(CGFloat::from(opacity));
             window.setFrame_display(frame, true);
             window.orderFront(None::<&AnyObject>);
         } else {
@@ -548,18 +567,21 @@ impl FlashMessageManager {
                 self.mtm,
                 NSRect::new(NSPoint::new(0.0, 0.0), size),
                 message,
-                opacity,
+                1.0,
                 is_badge,
             );
             window.setContentView(Some(&view));
+            window.setAlphaValue(CGFloat::from(opacity));
             window.orderFront(None::<&AnyObject>);
             self.window = Some(window);
         }
+        self.shown = Some(key);
     }
 
     pub fn remove(&mut self) {
         if let Some(window) = self.window.take() {
             window.orderOut(None::<&AnyObject>);
         }
+        self.shown = None;
     }
 }
