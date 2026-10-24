@@ -40,6 +40,10 @@ if [[ -z "$identity" ]]; then
     identity="-"
 fi
 
+# Always the repo `origin` points at: with an `upstream` remote, gh would
+# otherwise pick that one by default.
+gh_repo="$(git remote get-url origin | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')"
+
 if $publish; then
     # The release tag is made on GitHub, so what it points at must be there.
     if [[ -n "$(git status --porcelain)" ]]; then
@@ -51,7 +55,7 @@ if $publish; then
         echo "error: push $(git branch --show-current) before publishing" >&2
         exit 1
     fi
-    if gh release view "$tag" >/dev/null 2>&1; then
+    if gh release view "$tag" --repo "$gh_repo" >/dev/null 2>&1; then
         echo "error: release $tag already exists; bump the version in Cargo.toml" >&2
         exit 1
     fi
@@ -142,8 +146,8 @@ rm -rf "$staging"
 codesign --force --sign "$identity" "$dmg"
 
 if $publish; then
-    echo "==> publishing $tag"
-    gh release create "$tag" "$dmg" --target "$(git rev-parse HEAD)" \
+    echo "==> publishing $tag to $gh_repo"
+    gh release create "$tag" "$dmg" --repo "$gh_repo" --target "$(git rev-parse HEAD)" \
         --title "fih $version" --notes-file - <<'EOF'
 ## Install
 
