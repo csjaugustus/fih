@@ -28,6 +28,10 @@ Need one window always there? Pin it. It hold left or right half. Rest of strip 
 
 ## Get
 
+Ready-made app go in [Releases](https://github.com/csjaugustus/fih/releases). Nothing there yet. Fih still small.
+
+### For nerds
+
 ```sh
 git clone https://github.com/csjaugustus/fih.git
 cd fih
@@ -39,6 +43,17 @@ cp fih.example.toml ~/.config/fih/fih.toml
 macOS ask for Accessibility. Say yes (System Settings → Privacy & Security). fih need it to move windows.
 
 Run all the time: `fih install && fih start`.
+
+### What that means?
+
+No worry. Give this to your AI agent (Claude Code, Codex, any):
+
+```text
+Install fih for me from https://github.com/csjaugustus/fih. Install Rust with
+rustup if I don't have it, build and install fih with cargo, copy
+fih.example.toml to ~/.config/fih/fih.toml, then start it and walk me through
+giving it Accessibility permission.
+```
 
 ## Keys (from `fih.example.toml`)
 
@@ -63,5 +78,7 @@ Change anything in `~/.config/fih/fih.toml`. fih reload it by itself. Every opti
 ## Where from
 
 fih is fork of [Paneru](https://github.com/karinushka/paneru). Paneru do the hard part. fih add pin, snap, step resize, and fish.
+
+README talk like [caveman](https://github.com/juliusbrussee/caveman). Good repo. Make AI talk less too.
 
 MIT license.
