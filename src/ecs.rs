@@ -302,6 +302,7 @@ pub fn register_systems(app: &mut bevy::app::App) {
                     crate::minimap::minimap_on_swipe,
                 )
                     .run_if(|config: Res<Config>| config.minimap_enabled()),
+                crate::minimap::minimap_on_workspace_switch,
                 crate::minimap::update_minimap.run_if(crate::minimap::minimap_active),
                 systems::update_flash_messages,
             )

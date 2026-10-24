@@ -10,7 +10,7 @@ use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::message::MessageReader;
-use bevy::ecs::query::{Changed, With};
+use bevy::ecs::query::{Added, Changed, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{NonSendMut, Populated, Query, Res, ResMut, Single};
 use bevy::math::IRect;
@@ -131,9 +131,26 @@ pub struct MinimapState {
     timer: Option<Timer>,
     /// Toggled by `strip_show`: stays up until toggled off.
     pinned: bool,
+    /// Whether the panel is actually on screen. It can be due (`visible`)
+    /// yet hidden, e.g. on an empty strip.
+    on_screen: bool,
 }
 
 impl MinimapState {
+    /// Whether the panel is drawn right now, which is what anything laid out
+    /// around it has to go by.
+    pub fn on_screen(&self) -> bool {
+        self.on_screen
+    }
+
+    /// Records whether the panel is drawn, touching the state (and so its
+    /// change detection) only when that flips.
+    fn set_on_screen(state: &mut ResMut<Self>, on_screen: bool) {
+        if state.on_screen != on_screen {
+            state.on_screen = on_screen;
+        }
+    }
+
     pub fn visible(&self) -> bool {
         self.pinned
             || self
@@ -216,6 +233,17 @@ pub(crate) fn minimap_on_swipe(
     state.poke(&config);
 }
 
+/// Ends a navigation countdown when the workspace changes: the switch shows
+/// its own number, which should not sit above a strip that is about to go.
+pub(crate) fn minimap_on_workspace_switch(
+    _switched: Populated<(), Added<ActiveWorkspaceMarker>>,
+    mut state: ResMut<MinimapState>,
+) {
+    if state.timer.is_some() {
+        state.timer = None;
+    }
+}
+
 /// Toggles the minimap on `strip_show`.
 pub(crate) fn strip_show_handler(
     mut messages: MessageReader<Event>,
@@ -269,6 +297,7 @@ pub(crate) fn update_minimap(
     };
     if !state.visible() {
         manager.hide();
+        MinimapState::set_on_screen(&mut state, false);
         return;
     }
 
@@ -298,6 +327,7 @@ pub(crate) fn update_minimap(
     // An empty strip has nothing to show, even when toggled on.
     if columns.is_empty() {
         manager.hide();
+        MinimapState::set_on_screen(&mut state, false);
         return;
     }
     let viewport = display.actual_display_bounds(dock, &config);
@@ -319,6 +349,7 @@ pub(crate) fn update_minimap(
         max_width,
         config.minimap_interactive(),
     );
+    MinimapState::set_on_screen(&mut state, true);
 }
 
 // ── AppKit ──────────────────────────────────────────────────────────────

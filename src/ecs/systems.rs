@@ -1245,7 +1245,7 @@ pub(crate) fn update_flash_messages(
     let (display, dock) = *active_display;
     let bounds = display.edge_bounds(dock, &config);
     // Sit above the minimap rather than on top of it.
-    let lift = if minimap.visible() {
+    let lift = if minimap.on_screen() {
         MINIMAP_HEIGHT + MINIMAP_BOTTOM_MARGIN / 2.0
     } else {
         0.0
