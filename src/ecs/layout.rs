@@ -3,7 +3,7 @@ use bevy::ecs::change_detection::{DetectChanges, DetectChangesMut, Ref};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::{Entity, EntityHashMap, EntityHashSet};
 use bevy::ecs::hierarchy::ChildOf;
-use bevy::ecs::query::{Changed, Has, Or, With, Without};
+use bevy::ecs::query::{Added, Changed, Has, Or, With, Without};
 use bevy::ecs::schedule::IntoScheduleConfigs as _;
 use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::system::{Commands, ParamSet, Populated, Query, Res};
@@ -18,7 +18,7 @@ use crate::ecs::workspace::{PreviousStripPosition, SnapStripMarker};
 use crate::ecs::{
     ActiveWorkspaceMarker, Bounds, DockPosition, EnsureVisibleMarker, Initializing, LayoutPosition,
     ManualStripOffset, Position, RepositionMarker, ReshuffleAroundMarker, ResizeMarker, Scrolling,
-    SpawnCommandsExt,
+    ShrunkForPin, SpawnCommandsExt, StripPinBasis,
 };
 use crate::errors::{Error, Result};
 use crate::manager::{Display, Origin, Size, Window};
@@ -182,6 +182,7 @@ impl Plugin for LayoutEventsPlugin {
                 // Wait for finish_setup before tiling: until then every window
                 // sits in the active strip regardless of its real display.
                 (
+                    sync_pinned_viewport.run_if(pinned_viewport_may_change),
                     layout_sizes_changed,
                     layout_strip_changed,
                     reshuffle_layout_strip,
@@ -194,6 +195,144 @@ impl Plugin for LayoutEventsPlugin {
                     .run_if(not(resource_exists::<Initializing>)),
             ),
         );
+    }
+}
+
+/// Share of the display a pinned window takes; the strip scrolls in the rest.
+const PIN_WIDTH_RATIO: f64 = 0.5;
+
+/// Strips whose pin, or whose turn on screen, may have changed.
+type PinChangedStrips<'w, 's> =
+    Query<'w, 's, (), Or<(Changed<LayoutStrip>, Added<ActiveWorkspaceMarker>)>>;
+
+/// Every strip, with what [`sync_pinned_viewport`] needs to place it.
+type PinSyncStrips<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static LayoutStrip,
+        &'static Position,
+        Option<&'static RepositionMarker>,
+        &'static ChildOf,
+        Has<ActiveWorkspaceMarker>,
+        Option<&'static StripPinBasis>,
+    ),
+>;
+
+fn pinned_viewport_may_change(
+    strips: PinChangedStrips,
+    displays: Query<(), Changed<Display>>,
+) -> bool {
+    !strips.is_empty() || !displays.is_empty()
+}
+
+/// The width of a left pin slice; a right one does not move where strips start.
+fn left_inset(inset: Option<(bool, i32)>) -> i32 {
+    match inset {
+        Some((false, width)) => width,
+        _ => 0,
+    }
+}
+
+/// Keeps each display's reserved pin slice in step with its active strip: a
+/// pinned window gets [`PIN_WIDTH_RATIO`] of the display at its edge, and the
+/// strip's viewport shrinks by as much. When the slice changes, columns too
+/// wide for the new viewport are narrowed (and remembered, so unpinning gives
+/// their width back) and the strip is re-clamped into place.
+///
+/// Strip origins are relative to wherever the viewport started when they were
+/// placed, which a left slice moves. [`StripPinBasis`] records that for every
+/// strip, so a strip is shifted by exactly the difference once it is active
+/// under its own slice — whether its pin changed, or it was laid out while
+/// hidden behind another strip's pin.
+#[instrument(level = Level::DEBUG, skip_all)]
+fn sync_pinned_viewport(
+    strips: PinSyncStrips,
+    mut displays: Query<(&mut Display, Option<&DockPosition>)>,
+    shrunk: Query<&ShrunkForPin>,
+    windows: Windows,
+    config: Res<Config>,
+    mut commands: Commands,
+) {
+    // Hidden strips are laid out against the slice the display reserves for
+    // its active strip, before that slice is updated below.
+    for (strip_entity, _, _, _, child_of, active, basis) in &strips {
+        if !active
+            && basis.is_none()
+            && let Ok((display, _)) = displays.get(child_of.parent())
+            && let Ok(mut entity_commands) = commands.get_entity(strip_entity)
+        {
+            entity_commands.try_insert(StripPinBasis(left_inset(display.pin_inset())));
+        }
+    }
+
+    for (strip_entity, strip, position, reposition, child_of, active, basis) in &strips {
+        if !active {
+            continue;
+        }
+        let Ok((mut display, dock)) = displays.get_mut(child_of.parent()) else {
+            continue;
+        };
+        let edge = display.edge_bounds(dock, &config);
+        let pin_width = round_px(f64::from(edge.width()) * PIN_WIDTH_RATIO);
+        let wanted = strip.pinned().map(|pin| (pin.east, pin_width));
+        let basis = basis.map_or_else(|| left_inset(display.pin_inset()), |basis| basis.0);
+
+        if let Some(pin) = strip.pinned()
+            && let Some(size) = windows.size(pin.entity)
+            && size.x != pin_width
+        {
+            commands.resize_entity(pin.entity, size.with_x(pin_width));
+        }
+
+        let shift = left_inset(wanted) - basis;
+        if shift != 0 {
+            let target = reposition.map_or(position.0, |target| target.0);
+            commands.reposition_entity(strip_entity, target + Origin::new(shift, 0));
+            if let Ok(mut entity_commands) = commands.get_entity(strip_entity) {
+                entity_commands.try_insert(StripPinBasis(left_inset(wanted)));
+            }
+        }
+
+        if display.pin_inset() == wanted {
+            continue;
+        }
+        display.set_pin_inset(wanted);
+        let viewport_width = display.actual_display_bounds(dock, &config).width();
+
+        for entity in strip.all_windows() {
+            if strip.is_pinned(entity) {
+                continue;
+            }
+            let Some(size) = windows.size(entity) else {
+                continue;
+            };
+            let previous = shrunk.get(entity).ok().map(|shrunk| shrunk.width);
+            if let Some(width) = previous.filter(|_| wanted.is_none()) {
+                // Unpinned: give back the width the pin took.
+                commands.resize_entity(entity, size.with_x(width.min(viewport_width)));
+                if let Ok(mut entity_commands) = commands.get_entity(entity) {
+                    entity_commands.try_remove::<ShrunkForPin>();
+                }
+            } else if size.x > viewport_width {
+                commands.resize_entity(entity, size.with_x(viewport_width));
+                if previous.is_none()
+                    && let Ok(mut entity_commands) = commands.get_entity(entity)
+                {
+                    entity_commands.try_insert(ShrunkForPin { width: size.x });
+                }
+            }
+        }
+
+        let anchor = windows
+            .focused()
+            .map(|(_, entity)| entity)
+            .filter(|entity| strip.contains(*entity) && !strip.is_pinned(*entity))
+            .or_else(|| strip.all_columns().first().copied());
+        if let Some(anchor) = anchor {
+            commands.reshuffle_around(anchor);
+        }
     }
 }
 
@@ -387,6 +526,20 @@ pub struct LayoutStrip {
     /// and of `LayoutStrip::tabbed()`, which callers like
     /// `apply_window_positions`/`give_away_focus` already key off for that unrelated feature.
     tabbed_stacks: EntityHashSet,
+    /// A window held at one edge of the viewport while the columns scroll past
+    /// it. It stays a member of the strip (so it hides and shows with its
+    /// workspace) but owns no column, so column operations never move it.
+    pinned: Option<Pin>,
+}
+
+/// The window pinned to an edge of a [`LayoutStrip`], and where it came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pin {
+    pub entity: Entity,
+    /// `true` for the right edge, `false` for the left.
+    pub east: bool,
+    /// The column index it left, so unpinning puts it back there.
+    pub index: usize,
 }
 
 impl LayoutStrip {
@@ -396,6 +549,7 @@ impl LayoutStrip {
             virtual_index,
             columns: VecDeque::new(),
             tabbed_stacks: EntityHashSet::default(),
+            pinned: None,
         }
     }
 
@@ -407,6 +561,7 @@ impl LayoutStrip {
             virtual_index: 0,
             columns,
             tabbed_stacks: EntityHashSet::default(),
+            pinned: None,
         }
     }
 
@@ -434,13 +589,57 @@ impl LayoutStrip {
             )))
     }
 
-    /// Returns `true` if the strip contains the given entity.
+    /// Returns `true` if the strip contains the given entity, pinned or not.
     pub fn contains(&self, entity: Entity) -> bool {
-        self.columns.iter().any(|column| match column {
-            Column::Single(id) | Column::Fullscren(id) => *id == entity,
-            Column::Stack(stack) => stack.iter().any(|item| item.contains(entity)),
-            Column::Tabs(stack) => stack.contains(&entity),
-        })
+        self.is_pinned(entity)
+            || self.columns.iter().any(|column| match column {
+                Column::Single(id) | Column::Fullscren(id) => *id == entity,
+                Column::Stack(stack) => stack.iter().any(|item| item.contains(entity)),
+                Column::Tabs(stack) => stack.contains(&entity),
+            })
+    }
+
+    /// The window pinned to an edge, if any.
+    pub fn pinned(&self) -> Option<Pin> {
+        self.pinned
+    }
+
+    pub fn is_pinned(&self, entity: Entity) -> bool {
+        self.pinned.is_some_and(|pin| pin.entity == entity)
+    }
+
+    /// Pins `entity` to the right (`east`) or left edge, taking it out of its
+    /// column. Pinning the pinned window again moves it to `east`'s edge; a
+    /// different window replaces the current pin, which goes back to its
+    /// column first. A window in a stack leaves the stack.
+    pub fn pin(&mut self, entity: Entity, east: bool) -> Result<()> {
+        if let Some(pin) = self.pinned.as_mut()
+            && pin.entity == entity
+        {
+            pin.east = east;
+            return Ok(());
+        }
+        let index = self.index_of(entity)?;
+        if matches!(self.columns.get(index), Some(Column::Fullscren(_))) {
+            return Ok(());
+        }
+        // Return the old pin first: it can land left of `entity` and shift it.
+        self.unpin();
+        let index = self.index_of(entity)?;
+        self.remove(entity);
+        self.pinned = Some(Pin {
+            entity,
+            east,
+            index,
+        });
+        Ok(())
+    }
+
+    /// Returns the pinned window to the column it came from.
+    pub fn unpin(&mut self) -> Option<Entity> {
+        let pin = self.pinned.take()?;
+        self.insert_at(pin.index, pin.entity);
+        Some(pin.entity)
     }
 
     /// Inserts a window ID into the pane at a specified position.
@@ -608,6 +807,10 @@ impl LayoutStrip {
     ///
     /// * `entity` - Entity of the window to remove.
     pub fn remove(&mut self, entity: Entity) {
+        if self.is_pinned(entity) {
+            self.pinned = None;
+            return;
+        }
         let removed = self
             .index_of(entity)
             .ok()
@@ -873,6 +1076,7 @@ impl LayoutStrip {
                 Column::Stack(items) => items.iter().flat_map(StackItem::window_iter).collect(),
                 Column::Tabs(ids) => ids.clone(),
             })
+            .chain(self.pinned.map(|pin| pin.entity))
             .collect()
     }
 
@@ -890,6 +1094,18 @@ impl LayoutStrip {
 
     pub fn columns(&self) -> impl Iterator<Item = &Column> {
         self.columns.iter()
+    }
+
+    /// The columns, with the pinned window (if any) as a column at its edge:
+    /// how the strip reads to anything that saves or reports its layout.
+    pub fn columns_with_pin(&self) -> Vec<Column> {
+        let mut columns: Vec<Column> = self.columns.iter().cloned().collect();
+        match self.pinned {
+            Some(pin) if pin.east => columns.push(Column::Single(pin.entity)),
+            Some(pin) => columns.insert(0, Column::Single(pin.entity)),
+            None => (),
+        }
+        columns
     }
 
     #[instrument(level = Level::TRACE, skip_all, fields(layout_strip_height))]
@@ -972,6 +1188,15 @@ impl LayoutStrip {
                 Some(frames)
             })
             .flatten()
+            // The pinned window's x is placed against the viewport edge by
+            // `position_layout_windows`; here it only gets the full height.
+            .chain(self.pinned.and_then(|pin| {
+                let frame = get_window_frame(pin.entity)?;
+                Some((
+                    pin.entity,
+                    IRect::new(0, 0, frame.width(), layout_strip_height),
+                ))
+            }))
     }
 
     #[instrument(level = Level::TRACE, skip_all)]
@@ -1102,7 +1327,12 @@ impl std::fmt::Display for LayoutStrip {
             .iter()
             .map(|column| format!("{column:?}"))
             .collect::<Vec<_>>();
-        write!(f, "[{}]", out.join(", "))
+        write!(f, "[{}]", out.join(", "))?;
+        if let Some(pin) = self.pinned {
+            let side = if pin.east { "right" } else { "left" };
+            write!(f, " pinned {side}: {}", pin.entity)?;
+        }
+        Ok(())
     }
 }
 
@@ -1315,6 +1545,10 @@ pub(super) fn reshuffle_layout_strip(
         let Some(ctx) = resolve_strip_scroll_context(entity, &strips, &displays, &config) else {
             return;
         };
+        // The pinned window never scrolls, so it has no offset to derive.
+        if ctx.strip.is_pinned(entity) {
+            return;
+        }
         if ctx.is_new_activation {
             trace!(
                 "reshuffle_layout_strip: skipping newly active workspace {}",
@@ -1459,7 +1693,7 @@ fn ensure_visible_in_strip(
         // before the `&mut Position` query below is touched — Bevy treats
         // the two queries as conflicting system params even though they're
         // never live at the same time here.
-        let Some((strip_entity, strip_target, viewport, is_new_activation)) =
+        let Some((strip_entity, strip_target, viewport, is_new_activation, pinned)) =
             resolve_strip_scroll_context(entity, &strip_params.p0(), &displays, &config).map(
                 |ctx| {
                     (
@@ -1467,12 +1701,17 @@ fn ensure_visible_in_strip(
                         ctx.strip_target,
                         ctx.display_bounds,
                         ctx.is_new_activation,
+                        ctx.strip.is_pinned(entity),
                     )
                 },
             )
         else {
             continue;
         };
+        // The pinned window is always on screen; scrolling would not move it.
+        if pinned {
+            continue;
+        }
 
         if is_new_activation {
             trace!("ensure_visible_in_strip: skipping newly active workspace {strip_entity}");
@@ -1539,6 +1778,8 @@ struct StripWindowContext {
     /// snap directly to its target in `position_layout_windows`, bypassing
     /// the offscreen/parking magnitude heuristic.
     snap_settling: bool,
+    /// Set for the strip's pinned window: `Some(true)` for the right edge.
+    pinned_east: Option<bool>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1559,6 +1800,19 @@ fn insert_strip_window_contexts(
             display_entity,
             matches!(column, Column::Stack(_)),
             snap_settling,
+        );
+    }
+    if let Some(pin) = strip.pinned {
+        contexts.insert(
+            pin.entity,
+            StripWindowContext {
+                strip_position,
+                swiping,
+                display_entity,
+                stacked: false,
+                snap_settling,
+                pinned_east: Some(pin.east),
+            },
         );
     }
 }
@@ -1583,6 +1837,7 @@ fn insert_column_window_contexts(
                     display_entity,
                     stacked,
                     snap_settling,
+                    pinned_east: None,
                 },
             );
         }
@@ -1609,6 +1864,7 @@ fn insert_column_window_contexts(
                         display_entity,
                         stacked,
                         snap_settling,
+                        pinned_east: None,
                     },
                 );
             }
@@ -1636,6 +1892,7 @@ fn insert_stack_item_window_contexts(
                     display_entity,
                     stacked,
                     snap_settling,
+                    pinned_east: None,
                 },
             );
         }
@@ -1649,11 +1906,51 @@ fn insert_stack_item_window_contexts(
                         display_entity,
                         stacked,
                         snap_settling,
+                        pinned_east: None,
                     },
                 );
             }
         }
     }
+}
+
+/// Where a window of an on-screen strip goes because of a pin, if anywhere.
+///
+/// The pinned window itself (`pinned_east` set) ignores the strip's scroll
+/// offset and sits in the slice reserved for it at the `edge` of the display.
+/// Any other window that would reach into that slice is parked in the bottom
+/// corner of the free side instead: never over the pinned window, and not
+/// behind it either, where a translucent window would show through. It is back
+/// in the viewport as soon as it scrolls fully inside it. `None` leaves
+/// `frame` (layout slot already offset by the strip) to the usual placement.
+fn pinned_placement(
+    frame: IRect,
+    pinned_east: Option<bool>,
+    pin_inset: Option<(bool, i32)>,
+    viewport: IRect,
+    edge: IRect,
+    bounds: IRect,
+    h_pad: i32,
+) -> Option<Origin> {
+    let width = frame.width();
+    if let Some(east) = pinned_east {
+        let x = if east { edge.max.x - width } else { edge.min.x };
+        return Some(Origin::new(x, frame.min.y));
+    }
+    let (pin_east, _) = pin_inset?;
+    let reaches_pin = if pin_east {
+        frame.max.x > viewport.max.x + h_pad
+    } else {
+        frame.min.x < viewport.min.x - h_pad
+    };
+    reaches_pin.then(|| {
+        let x = if pin_east {
+            bounds.min.x - width + PARKED_STRIP_SLIVER
+        } else {
+            bounds.max.x - PARKED_STRIP_SLIVER
+        };
+        Origin::new(x, bounds.max.y - PARKED_STRIP_SLIVER)
+    })
 }
 
 /// Reacts to changes of logical window layout in the strip and any have been changed, reposition
@@ -1709,18 +2006,38 @@ fn position_layout_windows(
         frame.max += context.strip_position;
 
         let mut offscreen = false;
-        if frame.max.x <= viewport.min.x + h_pad {
+        let park_row = viewport.max.y - PARKED_STRIP_SLIVER;
+        // The display's usable edge, ignoring any pinned slice. Windows on a
+        // pin's side are parked by `pinned_placement`, so the slivers below
+        // only ever land on the free side, where this is the viewport edge.
+        let edge = display.edge_bounds(dock, &config);
+        if context.strip_position.y < park_row
+            && let Some(origin) = pinned_placement(
+                frame,
+                context.pinned_east,
+                display.pin_inset(),
+                viewport,
+                edge,
+                display.bounds(),
+                h_pad,
+            )
+        {
+            // Once its strip is parked, a pinned window simply goes along.
+            let size = frame.size();
+            frame.min = origin;
+            frame.max = origin + size;
+        } else if frame.max.x <= viewport.min.x + h_pad {
             // Window hidden to the left — position so exactly
             // sliver_width CG pixels are visible from the real
             // display edge.  The +h_pad accounts for the gap that
             // reposition() adds, which can leave a window just
             // inside the viewport edge while its CG frame is fully
             // past it.
-            frame.min.x = viewport.min.x - width + offscreen_sliver_width - pad_left + h_pad;
+            frame.min.x = edge.min.x - width + offscreen_sliver_width - pad_left + h_pad;
             offscreen = true;
         } else if frame.min.x >= viewport.max.x - h_pad {
             // Window hidden to the right — mirror of above.
-            frame.min.x = viewport.max.x - offscreen_sliver_width + pad_right - h_pad;
+            frame.min.x = edge.max.x - offscreen_sliver_width + pad_right - h_pad;
             offscreen = true;
         }
         frame.max.x = frame.min.x + width;
@@ -1748,7 +2065,6 @@ fn position_layout_windows(
         // bottom edge, fully inside the display underneath. macOS then adopts
         // the window onto that display, and showing the workspace again brings
         // it back there instead of here. Park those at the corner as well.
-        let park_row = viewport.max.y - PARKED_STRIP_SLIVER;
         if frame.min.y > park_row {
             let height = frame.height();
             frame.min.y = park_row;
@@ -1784,8 +2100,13 @@ fn position_layout_windows(
             // `parking` nor the distance threshold recognizes as
             // restore-driven, since its last position can land close enough
             // to its target. See `SnapStripMarker`.
+            // Beside a pin, a window parked out of the pinned slice (or coming
+            // back from there) must not be animated across the display.
+            let pin_parking =
+                parking && display.pin_inset().is_some() && context.strip_position.y < park_row;
             if context.swiping
                 || context.snap_settling
+                || pin_parking
                 || offscreen_move && !config.virtual_workspace_animations()
             {
                 position.0 = frame.min;
@@ -2117,6 +2438,140 @@ mod tests {
         assert_eq!(strip.index_of(entities[1]).unwrap(), 0);
         assert_eq!(strip.index_of(entities[0]).unwrap(), 1);
         assert_eq!(strip.index_of(entities[2]).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_pinned_placement() {
+        // A 1000px display with a left pin over its first half.
+        let bounds = IRect::new(0, 0, 1000, 800);
+        let edge = IRect::new(0, 20, 1000, 800);
+        let viewport = IRect::new(500, 20, 1000, 800);
+        let left_pin = Some((false, 500));
+        let slot = |x: i32| IRect::new(x, 20, x + 500, 800);
+
+        // The pinned window sits at its edge whatever the strip's offset.
+        assert_eq!(
+            pinned_placement(
+                slot(-1234),
+                Some(false),
+                left_pin,
+                viewport,
+                edge,
+                bounds,
+                0
+            ),
+            Some(Origin::new(0, 20))
+        );
+        // A window fully in the free pane is left to the usual placement.
+        assert_eq!(
+            pinned_placement(slot(500), None, left_pin, viewport, edge, bounds, 4),
+            None
+        );
+        // One reaching into the pinned slice, even a little, is parked in the
+        // free side's bottom corner rather than shown over or behind the pin.
+        let parked = Some(Origin::new(
+            1000 - PARKED_STRIP_SLIVER,
+            800 - PARKED_STRIP_SLIVER,
+        ));
+        assert_eq!(
+            pinned_placement(slot(480), None, left_pin, viewport, edge, bounds, 4),
+            parked
+        );
+        assert_eq!(
+            pinned_placement(slot(-900), None, left_pin, viewport, edge, bounds, 4),
+            parked
+        );
+        // Mirrored for a right pin: parked in the bottom-left corner.
+        let right_viewport = IRect::new(0, 20, 500, 800);
+        assert_eq!(
+            pinned_placement(
+                slot(20),
+                None,
+                Some((true, 500)),
+                right_viewport,
+                edge,
+                bounds,
+                4
+            ),
+            Some(Origin::new(
+                -500 + PARKED_STRIP_SLIVER,
+                800 - PARKED_STRIP_SLIVER
+            ))
+        );
+        // Without a pin nothing changes.
+        assert_eq!(
+            pinned_placement(slot(480), None, None, viewport, edge, bounds, 4),
+            None
+        );
+    }
+
+    #[test]
+    fn test_pin_takes_a_window_out_of_its_column_and_back() {
+        let (_world, mut strip, e) = setup_world_and_strip();
+
+        strip.pin(e[1], false).unwrap();
+        assert_eq!(
+            strip.pinned(),
+            Some(Pin {
+                entity: e[1],
+                east: false,
+                index: 1
+            })
+        );
+        assert_eq!(strip.len(), 2, "the pinned window owns no column");
+        assert!(strip.index_of(e[1]).is_err());
+        assert!(strip.contains(e[1]), "but still belongs to the strip");
+        assert_eq!(strip.all_windows(), vec![e[0], e[2], e[1]]);
+        let tops: Vec<_> = strip
+            .columns_with_pin()
+            .iter()
+            .filter_map(Column::top)
+            .collect();
+        assert_eq!(
+            tops,
+            vec![e[1], e[0], e[2]],
+            "a left pin reads as the first column"
+        );
+
+        // Pinning it again moves it to the other edge.
+        strip.pin(e[1], true).unwrap();
+        assert!(strip.pinned().is_some_and(|pin| pin.east));
+        assert!(matches!(
+            strip.columns_with_pin().last(),
+            Some(Column::Single(entity)) if *entity == e[1]
+        ));
+
+        assert_eq!(strip.unpin(), Some(e[1]));
+        assert_eq!(strip.pinned(), None);
+        assert_eq!(strip.index_of(e[1]).unwrap(), 1, "back where it came from");
+    }
+
+    #[test]
+    fn test_pinning_another_window_returns_the_first() {
+        let (_world, mut strip, e) = setup_world_and_strip();
+
+        strip.pin(e[0], false).unwrap();
+        // e[2] is at index 1 now; e[0] goes back in front of it.
+        strip.pin(e[2], true).unwrap();
+        assert_eq!(
+            strip.pinned().map(|pin| (pin.entity, pin.index)),
+            Some((e[2], 2))
+        );
+        assert_eq!(strip.index_of(e[0]).unwrap(), 0);
+        assert_eq!(strip.index_of(e[1]).unwrap(), 1);
+        assert_eq!(strip.unpin(), Some(e[2]));
+        assert_eq!(strip.index_of(e[2]).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_removing_the_pinned_window_clears_the_pin() {
+        let (_world, mut strip, e) = setup_world_and_strip();
+
+        strip.pin(e[2], true).unwrap();
+        strip.remove(e[2]);
+        assert_eq!(strip.pinned(), None);
+        assert!(!strip.contains(e[2]));
+        assert_eq!(strip.len(), 2);
     }
 
     #[test]

@@ -195,7 +195,7 @@ impl PaneruState {
             }
 
             let mut saved_columns = Vec::new();
-            for col in strip.columns() {
+            for col in &strip.columns_with_pin() {
                 let saved_col = match col {
                     Column::Single(entity) => {
                         SavedWindow::from_entity(*entity, windows, apps).map(SavedColumn::Single)
@@ -487,7 +487,7 @@ impl QueryStateParams<'_, '_> {
             // membership — that decides whether it goes in `columns` or `floating`.
             let mut floating = Vec::new();
             let mut columns: Vec<ColumnSet> = Vec::new();
-            for column in strip.columns() {
+            for column in &strip.columns_with_pin() {
                 let mut tiled = Vec::new();
                 for entity in column.window_iter() {
                     let Some(record) = self.window_record(entity, focused_entity, sliver_width)

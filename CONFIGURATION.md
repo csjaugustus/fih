@@ -256,6 +256,7 @@ https://github.com/karinushka/paneru/blob/3790b01f8d65df5d9000142db7cf25f9270dcc
 | `window_stack` | Stack the current window into the column on the left. |
 | `window_unstack` | Pull a window out of a stack into its own column. |
 | `window_tabbeddisplay` | Toggle the focused stack between a normal split display and a tabbed display (one window visible at a time, sharing the full column). Cycle tabs with `window_focus_north`/`window_focus_south`. |
+| `window_pin_left` / `window_pin_right` | Pin the focused window to the left/right half of the display; the strip scrolls in the other half. Pressing it for the other side moves the pin there, pressing it again unpins the window back into its column. One pin per virtual workspace; it hides and shows with its workspace. Focus reaches it by moving west/east off the end of the strip. |
 | `window_equalize` | Make all windows in a stack equal height. |
 | `window_balance` | Make all columns in the strip the same width as the focused window. |
 | `window_nextdisplay` | Move focused window to the next monitor and follow it. |

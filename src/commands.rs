@@ -136,7 +136,7 @@ pub fn register_commands(app: &mut bevy::app::App) {
     app.init_resource::<SnippetDialect>();
     app.add_systems(
         PreUpdate,
-        (copy_window_rule, toggle_tabbed_display_handler)
+        (copy_window_rule, toggle_tabbed_display_handler, pin_window)
             .in_set(crate::ecs::PreUpdateSet::Dispatch),
     );
 }
@@ -175,11 +175,32 @@ pub(crate) fn get_window_in_direction(
     entity: Entity,
     strip: &LayoutStrip,
 ) -> Option<Entity> {
+    // The pinned window sits beside the columns: stepping away from its edge
+    // enters the strip, and stepping off the strip's end reaches it.
+    let pin = strip.pinned();
+    if let Some(pin) = pin.filter(|pin| pin.entity == entity) {
+        let column = match direction {
+            Direction::East if !pin.east => strip.first(),
+            Direction::West if pin.east => strip.last(),
+            Direction::First => strip.first(),
+            Direction::Last => strip.last(),
+            Direction::Nth(index) => strip.get(*index),
+            _ => return None,
+        };
+        return column.ok().and_then(|column| column.top());
+    }
+
     let index = strip.index_of(entity).ok()?;
 
     match direction {
-        Direction::West => strip.left_neighbour(entity),
-        Direction::East => strip.right_neighbour(entity),
+        Direction::West => strip.left_neighbour(entity).or_else(|| {
+            pin.filter(|pin| !pin.east && index == 0)
+                .map(|pin| pin.entity)
+        }),
+        Direction::East => strip.right_neighbour(entity).or_else(|| {
+            pin.filter(|pin| pin.east && index + 1 == strip.len())
+                .map(|pin| pin.entity)
+        }),
 
         Direction::First => strip.first().ok().and_then(|column| column.top()),
 
@@ -876,8 +897,15 @@ fn resize_window(
         cmds.try_remove::<FullWidthMarker>();
     }
 
+    // Ratios are of the whole display, so a half-width window stays half the
+    // display beside a pin; the pin's slice then caps how wide it can get.
     let viewport = active_display.actual_bounds(&config);
-    let current_ratio = f64::from(frame.width()) / f64::from(viewport.width());
+    let display_width = active_display
+        .display()
+        .edge_bounds(active_display.dock(), &config)
+        .width();
+    let pinned = active_display.display().pin_inset().is_some();
+    let current_ratio = f64::from(frame.width()) / f64::from(display_width);
     let widths = config.preset_column_widths();
     let fallback = *widths.first().unwrap_or(&0.5);
     let cycle = config.window_resize_cycle();
@@ -910,7 +938,7 @@ fn resize_window(
             // Pending resizes count, so holding the key keeps stepping instead
             // of re-reading a mid-animation width.
             let moving = windows.moving_frame(entity).unwrap_or(frame);
-            let current_ratio = f64::from(moving.width()) / f64::from(viewport.width());
+            let current_ratio = f64::from(moving.width()) / f64::from(display_width);
             let step = config.window_width_step();
             match direction {
                 // Oversized (scrollable) columns are left to the presets.
@@ -922,7 +950,10 @@ fn resize_window(
         _ => return,
     };
 
-    let new_width = round_px(next_ratio * f64::from(viewport.width()));
+    let mut new_width = round_px(next_ratio * f64::from(display_width));
+    if pinned {
+        new_width = new_width.min(viewport.width());
+    }
     let size = Size::new(new_width, frame.height());
 
     // Resize all windows in the column so stacked siblings share the new width.
@@ -1637,6 +1668,53 @@ pub fn stack_windows_handler(
         // leftmost window touches the left edge and the rightmost the right.
         commands.reshuffle_around(entity);
     }
+}
+
+/// Pins the focused window to an edge of the viewport, moves the pin to the
+/// other edge, or — asked for the edge it is already on — unpins it, putting
+/// it back in the column it came from. The viewport itself is resized by
+/// `sync_pinned_viewport` once the strip has changed.
+#[instrument(level = Level::DEBUG, skip_all)]
+pub fn pin_window(
+    mut messages: MessageReader<Event>,
+    windows: Windows,
+    mut active_display: ActiveDisplayMut,
+    mut commands: Commands,
+) {
+    let Some(Operation::Pin(direction)) =
+        filter_window_operations(&mut messages, |op| matches!(op, Operation::Pin(_))).next()
+    else {
+        return;
+    };
+    let east = matches!(direction, Direction::East);
+    let Some((_, entity)) = windows.focused() else {
+        return;
+    };
+
+    let strip = active_display.active_strip();
+    if !strip.contains(entity) {
+        // Floating windows have no place in the strip to be pinned from.
+        return;
+    }
+    let message = match strip.pinned() {
+        Some(pin) if pin.entity == entity && pin.east == east => {
+            strip.unpin();
+            "Unpinned"
+        }
+        _ => {
+            if strip.pin(entity, east).is_err() {
+                return;
+            }
+            if east { "Pinned right" } else { "Pinned left" }
+        }
+    };
+
+    // The pin decides its width now, so a full-width toggle no longer applies.
+    if let Ok(mut entity_commands) = commands.get_entity(entity) {
+        entity_commands.try_remove::<FullWidthMarker>();
+    }
+    commands.reshuffle_around(entity);
+    commands.flash_message(message.to_string(), 1.0);
 }
 
 /// Toggles the focused window's stack between a normal split display and a

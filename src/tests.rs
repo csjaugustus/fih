@@ -4,6 +4,7 @@ mod harness;
 mod interaction;
 mod mocks;
 mod mouse_focus;
+mod pinning;
 mod session_restore;
 mod state;
 mod tabbed_display;

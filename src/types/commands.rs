@@ -248,6 +248,10 @@ pub enum Operation {
     Manage,
     /// Stacks or unstacks a window. The boolean indicates whether to stack (`true`) or unstack (`false`).
     Stack(bool),
+    /// Pins the focused window to the left (`West`) or right (`East`) edge,
+    /// moves an existing pin to that edge, or unpins it if it is already
+    /// pinned there. Only `West` and `East` are accepted.
+    Pin(Direction),
     /// Toggles the focused window's stack between a normal split display
     /// (all windows visible, sharing height) and a tabbed display (one
     /// window visible at a time, sharing the full column). Cycle tabs with

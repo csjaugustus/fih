@@ -454,6 +454,18 @@ pub struct FullWidthMarker {
     pub width_ratio: f64,
 }
 
+/// The width of the left pin slice a strip's origin was last placed against.
+/// See `sync_pinned_viewport`.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct StripPinBasis(pub i32);
+
+/// A column narrowed to fit beside a pinned window, and the width it had
+/// before, so unpinning gives it back.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct ShrunkForPin {
+    pub width: i32,
+}
+
 /// Enum component indicating the unmanaged state of a window.
 #[derive(Component, Debug)]
 pub enum Unmanaged {

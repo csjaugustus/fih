@@ -101,6 +101,12 @@ fn parse_operation(argv: &[&str]) -> Result<Operation> {
         "stack" => Operation::Stack(true),
         "unstack" => Operation::Stack(false),
         "tabbeddisplay" => Operation::ToggleTabbedDisplay,
+        // `window_pin_left` / `window_pin_right`.
+        "pin" => Operation::Pin(match argument()? {
+            "left" => Direction::West,
+            "right" => Direction::East,
+            _ => return Err(err()),
+        }),
         "nextdisplay" => Operation::ToNextDisplay(MoveFocus::Follow),
         "nextdisplaysend" => Operation::ToNextDisplay(MoveFocus::Stay),
         "snap" => Operation::Snap,
@@ -210,6 +216,8 @@ impl Operation {
             Operation::Manage => owned(&["manage"]),
             Operation::Stack(true) => owned(&["stack"]),
             Operation::Stack(false) => owned(&["unstack"]),
+            Operation::Pin(Direction::East) => owned(&["pin", "right"]),
+            Operation::Pin(_) => owned(&["pin", "left"]),
             Operation::ToggleTabbedDisplay => owned(&["tabbeddisplay"]),
             Operation::Snap => owned(&["snap"]),
             Operation::Virtual(direction) => vec!["virtual".to_string(), direction.token()],
@@ -274,6 +282,8 @@ mod tests {
             Operation::Manage,
             Operation::Stack(true),
             Operation::Stack(false),
+            Operation::Pin(Direction::West),
+            Operation::Pin(Direction::East),
             Operation::ToggleTabbedDisplay,
             Operation::Snap,
             Operation::Virtual(Direction::First),
@@ -339,6 +349,7 @@ mod tests {
         assert!(parse_command(&["definitely", "not", "a", "command"]).is_err());
         assert!(parse_command(&["window", "focus"]).is_err());
         assert!(parse_command(&["window", "swap", "0"]).is_err());
+        assert!(parse_command(&["window", "pin", "north"]).is_err());
         assert!(parse_command(&["showmenu", "extra"]).is_err());
         assert!(parse_command(&["hidemenu", "extra"]).is_err());
     }

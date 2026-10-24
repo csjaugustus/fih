@@ -25,6 +25,9 @@ pub struct Display {
     /// Optional config override for the menubar height.
     menubar_height_override: Option<i32>,
     notch_height: i32,
+    /// Width reserved at the right (`true`) or left edge for the active
+    /// strip's pinned window, kept in sync by the layout.
+    pin_inset: Option<(bool, i32)>,
 }
 
 impl Display {
@@ -47,6 +50,7 @@ impl Display {
             menubar_height,
             menubar_height_override: None,
             notch_height: 0,
+            pin_inset: None,
         }
     }
 
@@ -140,8 +144,29 @@ impl Display {
         self.notch_height = height;
     }
 
+    pub fn pin_inset(&self) -> Option<(bool, i32)> {
+        self.pin_inset
+    }
+
+    pub fn set_pin_inset(&mut self, inset: Option<(bool, i32)>) {
+        self.pin_inset = inset;
+    }
+
+    /// The viewport the strip's columns scroll in: [`Self::edge_bounds`] less
+    /// the slice reserved for a pinned window.
     #[instrument(level = Level::TRACE, skip_all, ret)]
     pub fn actual_display_bounds(&self, dock: Option<&DockPosition>, config: &Config) -> IRect {
+        let mut viewport = self.edge_bounds(dock, config);
+        match self.pin_inset {
+            Some((true, width)) => viewport.max.x -= width,
+            Some((false, width)) => viewport.min.x += width,
+            None => (),
+        }
+        viewport
+    }
+
+    /// The display bounds less the menubar, configured padding and Dock.
+    pub fn edge_bounds(&self, dock: Option<&DockPosition>, config: &Config) -> IRect {
         let (pad_top, pad_right, pad_bottom, pad_left) = config.edge_padding();
         let mut viewport = self.bounds();
         viewport.min.x += pad_left;
