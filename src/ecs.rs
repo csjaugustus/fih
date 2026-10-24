@@ -482,6 +482,11 @@ pub enum Unmanaged {
     Hidden,
 }
 
+/// Marks a minimized window that was floating, so it floats again when it is
+/// restored instead of joining the strip.
+#[derive(Component, Debug)]
+pub struct MinimizedFromFloating;
+
 #[derive(Clone, Component, Copy, Debug)]
 pub struct PreviousManagedStrip {
     pub workspace_id: WorkspaceId,

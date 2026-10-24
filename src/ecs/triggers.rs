@@ -25,9 +25,9 @@ use crate::ecs::params::{ActiveDisplay, GlobalState, WindowCtx, Windows};
 use crate::ecs::state::PaneruState;
 use crate::ecs::workspace::RestoreFocusMarker;
 use crate::ecs::{
-    ActiveWorkspaceMarker, Bounds, DockPosition, Initializing, LayoutPosition, Position,
-    ResizeMarker, RestoreWindowState, Scrolling, SendMessageTrigger, SpawnCommandsExt,
-    VerifyWindowPosition, WidthRatio, WindowProperties,
+    ActiveWorkspaceMarker, Bounds, DockPosition, Initializing, LayoutPosition,
+    MinimizedFromFloating, Position, ResizeMarker, RestoreWindowState, Scrolling,
+    SendMessageTrigger, SpawnCommandsExt, VerifyWindowPosition, WidthRatio, WindowProperties,
 };
 use crate::events::{DestroySource, Event};
 use crate::manager::{
@@ -538,6 +538,7 @@ pub(super) fn dispatch_application_messages(
     windows: Windows,
     applications: Query<(&Application, &Children)>,
     unmanaged_query: Query<&Unmanaged>,
+    floated_before_minimize: Query<(), With<MinimizedFromFloating>>,
     mut commands: Commands,
 ) {
     let find_window = |window_id| windows.find(window_id);
@@ -548,6 +549,9 @@ pub(super) fn dispatch_application_messages(
                 if let Some((_, entity)) = find_window(*window_id)
                     && let Ok(mut entity_commands) = commands.get_entity(entity)
                 {
+                    if matches!(unmanaged_query.get(entity), Ok(Unmanaged::Floating)) {
+                        entity_commands.try_insert(MinimizedFromFloating);
+                    }
                     entity_commands.try_insert(Unmanaged::Minimized);
                 }
             }
@@ -557,7 +561,14 @@ pub(super) fn dispatch_application_messages(
                     && matches!(unmanaged_query.get(entity), Ok(Unmanaged::Minimized))
                     && let Ok(mut entity_commands) = commands.get_entity(entity)
                 {
-                    entity_commands.try_remove::<Unmanaged>();
+                    // A floating window comes back floating, not into the strip.
+                    if floated_before_minimize.contains(entity) {
+                        entity_commands
+                            .try_remove::<MinimizedFromFloating>()
+                            .try_insert(Unmanaged::Floating);
+                    } else {
+                        entity_commands.try_remove::<Unmanaged>();
+                    }
                 }
             }
 
