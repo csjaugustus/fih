@@ -1053,7 +1053,7 @@ pub(super) fn update_overlays(
 
     // Find the focused managed window's absolute CG frame.
     let focused_abs_cg = Some(padded_frame(window));
-    let pinned = active_strip.pinned().map(|pin| pin.entity);
+    let pinned = active_strip.is_pinned(entity);
 
     // A floating window has no border, nor does a window filling the screen
     // - fill screen, toggled to full width, or alone on its workspace: it
@@ -1090,8 +1090,12 @@ pub(super) fn update_overlays(
         };
 
         Some(BorderParams {
-            // Focus outranks the pinned ring: a focused pinned window is teal.
-            color: config.border_color(theme.is_some_and(|theme| theme.is_dark)),
+            // The pinned window, focused, is framed in orange instead.
+            color: if pinned {
+                PINNED_BORDER_COLOR
+            } else {
+                config.border_color(theme.is_some_and(|theme| theme.is_dark))
+            },
             opacity: config.border_opacity(),
             width: config.border_width(),
             radius: window_config_cache
@@ -1103,43 +1107,18 @@ pub(super) fn update_overlays(
         None
     };
 
-    let pinned_ring = pinned
-        .filter(|pinned| border_enabled && *pinned != entity)
-        .and_then(|pinned| windows.get(pinned))
-        .map(|window| pinned_ring(window, &config));
-
     let dim_color = config.dim_inactive_color();
     overlay_mgr.update(
         dim_opacity,
         dim_color,
         focused_abs_cg,
         border_params.as_ref(),
-        pinned_ring.as_ref().map(|(rect, border)| (*rect, border)),
     );
 }
 
-/// The orange of the minimap's pinned tile.
+/// The focus border's colour on the pinned window: the orange of the
+/// minimap's pinned tile.
 const PINNED_BORDER_COLOR: (f64, f64, f64) = (1.0, 0.62, 0.04);
-
-/// The orange ring around the pinned window while another window has focus,
-/// in the focus border's width and opacity.
-fn pinned_ring(
-    window: &Window,
-    config: &Config,
-) -> (objc2_foundation::NSRect, crate::overlay::BorderParams) {
-    (
-        padded_frame(window),
-        crate::overlay::BorderParams {
-            color: PINNED_BORDER_COLOR,
-            opacity: config.border_opacity(),
-            width: config.border_width(),
-            radius: match config.border_radius() {
-                BorderRadiusOption::Auto => window.border_radius().unwrap_or(10.0),
-                BorderRadiusOption::Value(value) => value.max(0.0),
-            },
-        },
-    )
-}
 
 /// A window's frame less its padding, in absolute CG coordinates: what its
 /// border is drawn around.
