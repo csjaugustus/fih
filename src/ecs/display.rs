@@ -404,13 +404,15 @@ fn migrate_moved_windows_to_space(
     }
 }
 
+/// Puts `extracted` on `display_entity`: into its empty first workspace, or
+/// as a new one after the last. Returns the strip it went into.
 fn place_extracted_strip(
     world: &mut World,
     display_entity: Entity,
     display_bounds: IRect,
     target_space_id: WorkspaceId,
     mut extracted: LayoutStrip,
-) {
+) -> Entity {
     let empty_row_0 = world
         .query::<(Entity, &LayoutStrip, Has<NativeFullscreenMarker>)>()
         .iter(world)
@@ -436,7 +438,7 @@ fn place_extracted_strip(
                 .remove::<PreviousStripPosition>()
                 .insert((Position(display_bounds.min), SelectedVirtualMarker));
         }
-        return;
+        return dst_entity;
     }
 
     let next_virtual_index = world
@@ -450,23 +452,108 @@ fn place_extracted_strip(
     extracted.virtual_index = next_virtual_index;
     let focus = extracted.first().ok().and_then(|col| col.top());
     if next_virtual_index == 0 {
-        world.spawn((
-            Position(display_bounds.min),
-            extracted,
-            ChildOf(display_entity),
-            SelectedVirtualMarker,
-        ));
+        world
+            .spawn((
+                Position(display_bounds.min),
+                extracted,
+                ChildOf(display_entity),
+                SelectedVirtualMarker,
+            ))
+            .id()
     } else {
-        world.spawn((
-            Position(display_bounds.max - PARKED_STRIP_SLIVER),
-            PreviousStripPosition {
-                origin: display_bounds.min,
-                focus,
-            },
-            extracted,
-            ChildOf(display_entity),
-        ));
+        world
+            .spawn((
+                Position(display_bounds.max - PARKED_STRIP_SLIVER),
+                PreviousStripPosition {
+                    origin: display_bounds.min,
+                    focus,
+                },
+                extracted,
+                ChildOf(display_entity),
+            ))
+            .id()
     }
+}
+
+/// An orphaned strip whose display did not come back in time: its windows
+/// go to the display in front, into its empty first workspace or a new one
+/// after its last, rather than being left in no strip at all.
+pub(crate) fn rehome_orphaned_strip(world: &mut World, strip_entity: Entity) {
+    let Ok(mut entity) = world.get_entity_mut(strip_entity) else {
+        return;
+    };
+    if entity.contains::<ChildOf>() {
+        // Reclaimed by a display after all.
+        entity.remove::<Timeout>();
+        return;
+    }
+    let display_entity = world
+        .query_filtered::<Entity, With<ActiveDisplayMarker>>()
+        .iter(world)
+        .next()
+        .or_else(|| {
+            world
+                .query_filtered::<Entity, With<Display>>()
+                .iter(world)
+                .next()
+        });
+    let Some((display_entity, display_bounds)) = display_entity.and_then(|display_entity| {
+        let bounds = world.get::<Display>(display_entity)?.bounds();
+        Some((display_entity, bounds))
+    }) else {
+        warn!("no display to re-home orphaned strip {strip_entity} onto");
+        return;
+    };
+    // The workspace the display shows, which says what Space it is on.
+    let Some(target_space_id) = world
+        .query::<(
+            &LayoutStrip,
+            &ChildOf,
+            Has<ActiveWorkspaceMarker>,
+            Has<SelectedVirtualMarker>,
+        )>()
+        .iter(world)
+        .filter(|(_, child, _, _)| child.parent() == display_entity)
+        .max_by_key(|(_, _, active, selected)| (*active, *selected))
+        .map(|(strip, _, _, _)| strip.id())
+    else {
+        warn!("display {display_entity} has no workspace to re-home orphaned strip onto");
+        return;
+    };
+
+    let mut entity = world.entity_mut(strip_entity);
+    let was_active = entity.contains::<ActiveWorkspaceMarker>();
+    let orphan = entity.take::<LayoutStrip>();
+    entity.despawn();
+    let Some(mut orphan) = orphan.filter(|orphan| orphan.len() > 0) else {
+        return;
+    };
+    debug!(
+        "re-homing orphaned strip {} onto workspace {target_space_id}",
+        orphan.id()
+    );
+    let windows: EntityHashSet = orphan.all_windows().into_iter().collect();
+    let mut extracted = LayoutStrip::new(target_space_id, 0);
+    orphan.extract_windows_into(&windows, &mut extracted);
+    let placed = place_extracted_strip(
+        world,
+        display_entity,
+        display_bounds,
+        target_space_id,
+        extracted,
+    );
+    if was_active {
+        world.entity_mut(placed).insert(ActiveWorkspaceMarker);
+    }
+    refresh_reparented_strip(world, placed);
+}
+
+/// The orphan timeout running out re-homes the strip's windows.
+fn rehome_orphan_on_expiry(entity_commands: &mut bevy::ecs::system::EntityCommands) {
+    let strip_entity = entity_commands.id();
+    entity_commands
+        .commands()
+        .queue(move |world: &mut World| rehome_orphaned_strip(world, strip_entity));
 }
 
 /// Removes emptied virtual workspace strips on `workspace_id` and compacts the
@@ -724,14 +811,15 @@ fn remove_display(
             "orphaning strip {} after removal of display {display_id}.",
             strip.id(),
         );
-        let timeout = Timeout::new(
+        let mut timeout = Timeout::new(
             Duration::from_secs(ORPHANED_SPACES_TIMEOUT_SEC),
             Some(format!(
-                "Orphaned strip {} ({strip}) could not be re-inserted after {ORPHANED_SPACES_TIMEOUT_SEC}s.",
+                "Orphaned strip {} ({strip}) was not reclaimed after {ORPHANED_SPACES_TIMEOUT_SEC}s; re-homing its windows.",
                 strip.id()
             )),
             commands,
         );
+        timeout.on_expire = Some(rehome_orphan_on_expiry);
         if let Ok(mut commands) = commands.get_entity(entity) {
             commands.try_insert(timeout);
         }

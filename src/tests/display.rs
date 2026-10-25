@@ -1644,3 +1644,67 @@ fn moving_a_window_by_number_crosses_displays() {
     let mut focused = world.query_filtered::<&Window, With<crate::ecs::FocusedMarker>>();
     assert_eq!(focused.single(world).unwrap().id(), 0, "focus followed it");
 }
+
+/// A display going away whose windows macOS never reports on the remaining
+/// one (as with a closed lid, where they turn up late): once the orphan
+/// timeout runs out, its windows go to a workspace on the display in front
+/// instead of being left in no strip at all.
+#[test]
+fn test_unreclaimed_orphan_windows_rehome_to_the_remaining_display() {
+    let mut harness = TestHarness::new().with_windows(1).with_display(
+        EXT_DISPLAY_ID,
+        IRect::new(0, -EXT_DISPLAY_HEIGHT, EXT_DISPLAY_WIDTH, 0),
+        vec![EXT_WORKSPACE_ID],
+    );
+    let ext_origin = Origin::new(0, -EXT_DISPLAY_HEIGHT + TEST_MENUBAR_HEIGHT);
+    harness.mock_state.spawn_window(
+        TEST_PROCESS_ID,
+        EXT_WORKSPACE_ID,
+        100,
+        IRect::from_corners(
+            ext_origin,
+            ext_origin + Size::new(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT),
+        ),
+    );
+    harness.advance(Duration::from_millis(500));
+    harness.mock_state.remove_display(EXT_DISPLAY_ID);
+    harness
+        .world()
+        .write_message::<Event>(Event::DisplayRemoved {
+            display_id: EXT_DISPLAY_ID,
+        });
+    harness.advance(Duration::from_secs(2));
+
+    let world = harness.world();
+    let window = find_window_entity(100, world);
+    let orphaned = world
+        .query::<(&LayoutStrip, Option<&ChildOf>)>()
+        .iter(world)
+        .any(|(strip, child)| strip.contains(window) && child.is_none());
+    assert!(orphaned, "the window waits in its orphaned strip at first");
+
+    harness.advance(Duration::from_secs(31));
+
+    let world = harness.world();
+    let window = find_window_entity(100, world);
+    let main = world.query::<(&Display, Entity)>().single(world).unwrap().1;
+    let (space, virtual_index, parent) = world
+        .query::<(&LayoutStrip, Option<&ChildOf>)>()
+        .iter(world)
+        .find(|(strip, _)| strip.contains(window))
+        .map(|(strip, child)| (strip.id(), strip.virtual_index, child.map(ChildOf::parent)))
+        .expect("the window is back in a strip");
+    assert_eq!(parent, Some(main), "on the remaining display");
+    assert_eq!(space, TEST_WORKSPACE_ID);
+    assert_eq!(
+        virtual_index, 1,
+        "a workspace of its own after the one there"
+    );
+    assert!(
+        world
+            .query::<&LayoutStrip>()
+            .iter(world)
+            .all(|strip| strip.id() != EXT_WORKSPACE_ID),
+        "the orphan is gone"
+    );
+}
