@@ -161,17 +161,18 @@ pub(crate) fn auto_fill_widths(
         let (filling, others): (Vec<&FillColumn>, Vec<&FillColumn>) = fill_columns
             .iter()
             .partition(|column| column.single && column.intent == WidthIntent::Fill);
+        let columns = choices.count(&strip, &display.screen(), &config);
+        // A pinned window takes its slice of the screen too: a column, as
+        // pinning makes it, whatever width it has not yet been resized from.
+        let pin_width = strip.pinned().map_or(0, |_| {
+            round_px(f64::from(edge_width) / f64::from(columns.max(1)))
+        });
         let target = fill_width(
             filling.len(),
-            choices.count(&strip, &display.screen(), &config),
+            columns,
             edge_width,
             viewport_width,
-            // A pinned window takes its slice of the screen too.
-            others.iter().map(|column| column.width).sum::<i32>()
-                + strip
-                    .pinned()
-                    .and_then(|pin| windows.moving_frame(pin.entity))
-                    .map_or(0, |frame| frame.width()),
+            others.iter().map(|column| column.width).sum::<i32>() + pin_width,
         );
         for (entity, width) in plan_auto_fill(&fill_columns, target) {
             let Some(frame) = windows.frame(entity) else {

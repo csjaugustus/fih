@@ -361,3 +361,61 @@ fn a_pinned_window_takes_one_column() {
     command(&mut harness, Operation::SetColumns(2));
     assert_eq!(pinned_width(&mut harness), TEST_DISPLAY_WIDTH / 2);
 }
+
+/// Three columns, auto-fill on, two windows open: pinning one leaves a third
+/// of the screen to the other, which grows into the empty space beside it,
+/// and is back to a column once a third window comes.
+fn pin_with_three_columns_and_two_windows(focus: Direction, side: Direction) {
+    let config = Config::try_from(
+        "[options]\nauto_fill_width = true\n[columns]\nbuiltin = 3\nexternal = 3\n[bindings]\n",
+    )
+    .expect("config should parse");
+    let column = TEST_DISPLAY_WIDTH / 3;
+    let rest = TEST_DISPLAY_WIDTH - column;
+    let mut harness = TestHarness::new().with_config(config).with_windows(2);
+    harness.advance(std::time::Duration::from_millis(500));
+    assert_eq!(frame(harness.world(), 0).width(), TEST_DISPLAY_WIDTH / 2);
+
+    for operation in [Operation::Focus(focus), Operation::Pin(side)] {
+        harness.app.world_mut().write_message(command(operation));
+        harness.advance(std::time::Duration::from_millis(500));
+    }
+    let pinned = (0..2)
+        .find(|id| pin_and_column(harness.world(), *id).1.is_none())
+        .expect("a pinned window");
+    let other = 1 - pinned;
+    assert_eq!(frame(harness.world(), pinned).width(), column);
+    assert_eq!(
+        frame(harness.world(), other).width(),
+        rest,
+        "the other window fills what the pin leaves"
+    );
+
+    let window = harness.mock_state.spawn_window(
+        TEST_PROCESS_ID,
+        TEST_WORKSPACE_ID,
+        2,
+        IRect::new(0, 0, TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT),
+    );
+    harness
+        .app
+        .world_mut()
+        .trigger(crate::ecs::SpawnWindowTrigger(vec![window]));
+    harness.advance(std::time::Duration::from_millis(500));
+    // The two share what the pin leaves: a column each, give or take the
+    // rounding of half of it.
+    for id in [other, 2] {
+        let width = frame(harness.world(), id).width();
+        assert!((width - column).abs() <= 1, "window {id} is {width} wide");
+    }
+}
+
+#[test]
+fn pinning_the_left_window_of_two_in_three_columns_fills_the_rest() {
+    pin_with_three_columns_and_two_windows(Direction::First, Direction::West);
+}
+
+#[test]
+fn pinning_the_right_window_of_two_in_three_columns_fills_the_rest() {
+    pin_with_three_columns_and_two_windows(Direction::Last, Direction::East);
+}
