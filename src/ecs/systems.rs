@@ -1056,14 +1056,13 @@ pub(super) fn update_overlays(
     let focused_abs_cg = Some(padded_frame(window));
     let pinned = active_strip.is_pinned(entity);
 
-    // A floating window has no border, nor does a window filling the screen
-    // - fill screen, toggled to full width, or alone on its workspace: it
-    // would frame the whole screen.
-    let floating = matches!(
-        windows.get_managed(entity),
-        Some((_, _, Some(Unmanaged::Floating)))
-    );
-    let fills_screen = floating
+    // Only a tiled window has a border: not a floating one, nor one still
+    // marked minimized or hidden, as a restored floating window is when its
+    // focus is reported before its restore. Nor does a window filling the
+    // screen - fill screen, toggled to full width, or alone on its
+    // workspace: it would frame the whole screen.
+    let untiled = matches!(windows.get_managed(entity), Some((_, _, Some(_))));
+    let fills_screen = untiled
         || windows.full_width(entity).is_some()
         || display.single().is_ok_and(|(display, dock)| {
             // The whole usable width, not the strip's viewport: a pinned
