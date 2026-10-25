@@ -11,6 +11,8 @@ use bevy::ecs::schedule::IntoScheduleConfigs as _;
 use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::system::{Commands, Local, ParamSet, Populated, Query, Res, ResMut, Single};
 use bevy::ecs::world::World;
+use bevy::math::IRect;
+use bevy::prelude::Event as BevyEvent;
 use bevy::time::common_conditions::on_timer;
 use std::collections::HashSet;
 use std::time::Duration;
@@ -154,7 +156,8 @@ impl Plugin for WorkspaceEventsPlugin {
             ),
         );
         app.add_observer(cleanup_active_workspace_marker)
-            .add_observer(cleanup_selected_space_marker);
+            .add_observer(cleanup_selected_space_marker)
+            .add_observer(drop_on_workspace);
     }
 }
 
@@ -1290,36 +1293,19 @@ fn move_virtual_workspace_bind(
         // display moves the window across, and one past the last opens a new
         // workspace here.
         Operation::VirtualMoveNumber(number, move_focus) => {
-            let workspaces = combined.list();
-            match usize::try_from(*number)
-                .ok()
-                .and_then(|number| workspaces.get(number).copied())
-            {
-                None => {
-                    let highest = rows.last().map_or(0, |(_, strip, _)| strip.virtual_index);
-                    (highest + 1, *move_focus)
-                }
-                Some(target) => {
-                    let Some(target_strip) = combined.strip(target.strip) else {
-                        return;
-                    };
-                    if target_strip.id() != active_display.active_strip().id() {
-                        move_window_to_display(
-                            focused_entity,
-                            target,
-                            *move_focus,
-                            &combined,
-                            &active_display,
-                            &mut commands,
-                        );
-                        return;
-                    }
-                    if target_strip.virtual_index == current_virtual_index {
-                        return;
-                    }
-                    (target_strip.virtual_index, *move_focus)
-                }
-            }
+            let highest = rows.last().map_or(0, |(_, strip, _)| strip.virtual_index);
+            let Some(target) = numbered_move_target(
+                focused_entity,
+                *number,
+                *move_focus,
+                highest,
+                &combined,
+                &active_display,
+                &mut commands,
+            ) else {
+                return;
+            };
+            (target, *move_focus)
         }
         _ => return,
     };
@@ -1332,6 +1318,181 @@ fn move_virtual_workspace_bind(
     }
 
     debug!("Moving {focused_entity} to new virtual space {target_virtual_index}");
+}
+
+/// Where moving `window` to the workspace numbered `number`, in the combined
+/// numbering of every display's workspaces, takes it on this Space: the
+/// virtual index to move it to. One past the last opens a new workspace here
+/// (after `highest`); one on another display moves the window across right
+/// away, and that or the window's own workspace leaves nothing more to do.
+fn numbered_move_target(
+    window: Entity,
+    number: u32,
+    move_focus: MoveFocus,
+    highest: u32,
+    combined: &crate::ecs::numbering::CombinedWorkspaces,
+    active_display: &ActiveDisplay,
+    commands: &mut Commands,
+) -> Option<u32> {
+    let workspaces = combined.list();
+    let Some(target) = usize::try_from(number)
+        .ok()
+        .and_then(|number| workspaces.get(number).copied())
+    else {
+        return Some(highest + 1);
+    };
+    let target_strip = combined.strip(target.strip)?;
+    if target_strip.id() != active_display.active_strip().id() {
+        move_window_to_display(
+            window,
+            target,
+            move_focus,
+            combined,
+            active_display,
+            commands,
+        );
+        return None;
+    }
+    (target_strip.virtual_index != active_display.active_strip().virtual_index)
+        .then_some(target_strip.virtual_index)
+}
+
+/// A place on the workspace drop bar a window can be dropped on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DropTarget {
+    /// The workspace numbered so, in the combined numbering.
+    Workspace(u32),
+    /// A new workspace, after the last one on this display.
+    NewOn(Entity),
+}
+
+/// Asks for `window` to go to `target`, as dropping it on the workspace drop
+/// bar does. Focus stays on the workspace in front.
+#[derive(BevyEvent, Clone, Copy)]
+pub(crate) struct DropOnWorkspaceTrigger {
+    pub window: Entity,
+    pub target: DropTarget,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn drop_on_workspace(
+    trigger: On<DropOnWorkspaceTrigger>,
+    active_display: ActiveDisplay,
+    workspaces: Query<&LayoutStrip>,
+    displays: Query<(&Display, Option<&DockPosition>)>,
+    combined: crate::ecs::numbering::CombinedWorkspaces,
+    config: Res<Config>,
+    mut commands: Commands,
+) {
+    let DropOnWorkspaceTrigger { window, target } = *trigger.event();
+    if !active_display.active_strip().contains(window) {
+        return;
+    }
+    let highest_on = |space: WorkspaceId| {
+        workspaces
+            .iter()
+            .filter(|strip| strip.id() == space)
+            .map(|strip| strip.virtual_index)
+            .max()
+    };
+    let space = active_display.active_strip().id();
+    let number = match target {
+        DropTarget::Workspace(number) => number,
+        // On this display, a number past the last opens a new workspace here.
+        DropTarget::NewOn(display) if display == active_display.entity() => u32::MAX,
+        DropTarget::NewOn(display) => {
+            // The Space the display shows, by the strips numbered on it.
+            let Some(space) = combined
+                .list()
+                .iter()
+                .find(|workspace| workspace.display == display)
+                .and_then(|workspace| combined.strip(workspace.strip))
+                .map(LayoutStrip::id)
+            else {
+                return;
+            };
+            let Ok((other, dock)) = displays.get(display) else {
+                return;
+            };
+            let virtual_index = highest_on(space).map_or(0, |highest| highest + 1);
+            move_window_to_new_workspace(
+                window,
+                LayoutStrip::new(space, virtual_index),
+                display,
+                other.actual_display_bounds(dock, &config),
+                &active_display,
+                &mut commands,
+            );
+            return;
+        }
+    };
+    let Some(target_virtual_index) = numbered_move_target(
+        window,
+        number,
+        MoveFocus::Stay,
+        highest_on(space).unwrap_or(0),
+        &combined,
+        &active_display,
+        &mut commands,
+    ) else {
+        return;
+    };
+    if let Ok(mut entity_commands) = commands.get_entity(window) {
+        entity_commands.try_insert(VirtualMoveMarker {
+            target_virtual_index,
+            move_focus: MoveFocus::Stay,
+        });
+    }
+    debug!("Dropped {window} on virtual space {target_virtual_index}");
+}
+
+/// Moves `window` from the active strip into `strip`, a new workspace on
+/// another display, parked out of sight the way a workspace not on screen
+/// is. Focus stays where it is.
+fn move_window_to_new_workspace(
+    window: Entity,
+    mut strip: LayoutStrip,
+    display: Entity,
+    viewport: IRect,
+    active_display: &ActiveDisplay,
+    commands: &mut Commands,
+) {
+    let source = active_display.active_strip();
+    let neighbour = source
+        .left_neighbour(window)
+        .or_else(|| source.right_neighbour(window));
+    // Out of the strip it is in before it goes into the new one.
+    commands.queue(move |world: &mut World| {
+        let mut strips = world.query::<&mut LayoutStrip>();
+        for mut strip in strips.iter_mut(world) {
+            if strip.contains(window) {
+                strip.remove(window);
+            }
+        }
+    });
+    debug!(
+        "Dropped {window} on new virtual row {} of workspace {}",
+        strip.virtual_index,
+        strip.id()
+    );
+    strip.append(window);
+    let parked = viewport.max - PARKED_STRIP_SLIVER;
+    // No `spawn_layout_strip`: its selected marker would take the display's
+    // shown workspace away from it.
+    commands.spawn((
+        strip,
+        Position(parked),
+        ChildOf(display),
+        PreviousStripPosition {
+            origin: viewport.min,
+            focus: Some(window),
+        },
+    ));
+    commands.reposition_entity(window, parked);
+    if let Some(neighbour) = neighbour {
+        commands.reshuffle_around(neighbour);
+        commands.focus_entity(neighbour, false);
+    }
 }
 
 /// The column of `strip` whose window sits nearest the display's horizontal

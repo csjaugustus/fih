@@ -97,6 +97,11 @@ impl Display {
         }
     }
 
+    /// Whether this is the Mac's own screen, rather than an external monitor.
+    pub fn builtin(&self) -> bool {
+        self.builtin
+    }
+
     /// Marks the display as the Mac's own screen (or not).
     #[must_use]
     pub fn with_builtin(mut self, builtin: bool) -> Self {

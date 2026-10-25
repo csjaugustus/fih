@@ -75,6 +75,7 @@ const PIN_LOCK_HEIGHT: f64 = 11.0;
 const FOCUS_RED: f64 = 0x5A as f64 / 255.0;
 const FOCUS_GREEN: f64 = 0xC5 as f64 / 255.0;
 const FOCUS_BLUE: f64 = 0xC9 as f64 / 255.0;
+pub(crate) const FOCUS_RGB: (f64, f64, f64) = (FOCUS_RED, FOCUS_GREEN, FOCUS_BLUE);
 /// The last part of the timeout the minimap spends fading out.
 const FADE_SECONDS: f32 = 0.3;
 
@@ -947,7 +948,7 @@ impl MinimapManager {
 
 /// A borderless panel that takes clicks without activating fih, so the click
 /// that focuses a window does not first pull focus away from the current one.
-fn make_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<NSPanel> {
+pub(crate) fn make_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<NSPanel> {
     let panel: Retained<NSPanel> = unsafe {
         msg_send![
             NSPanel::alloc(mtm),

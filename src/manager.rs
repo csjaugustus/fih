@@ -39,7 +39,7 @@ use skylight::{
     _AXUIElementCreateWithRemoteToken, SLSCopyActiveMenuBarDisplayIdentifier,
     SLSCopyAssociatedWindows, SLSCopyManagedDisplaySpaces, SLSCopyWindowsWithOptionsAndTags,
     SLSFindWindowAndOwner, SLSGetConnectionIDForPSN, SLSGetCurrentCursorLocation,
-    SLSGetDisplayMenubarHeight, SLSGetSpaceManagementMode, SLSMainConnectionID,
+    SLSGetDisplayMenubarHeight, SLSGetSpaceManagementMode, SLSGetWindowBounds, SLSMainConnectionID,
     SLSManagedDisplayGetCurrentSpace, SLSSpaceGetType, SLSWindowIsOrderedIn,
     SLSWindowIteratorAdvance, SLSWindowIteratorGetAttributes, SLSWindowIteratorGetParentID,
     SLSWindowIteratorGetTags, SLSWindowIteratorGetWindowID, SLSWindowQueryResultCopyWindows,
@@ -172,6 +172,9 @@ pub trait WindowManagerApi: Send + Sync {
     ///
     /// `Ok(WinID)` with the found window's ID if successful, otherwise `Err(Error)`.
     fn find_window_at_point(&self, point: &CGPoint) -> Result<WinID>;
+    /// The window's frame as the window server has it. Unlike the app's own
+    /// account over accessibility, it keeps up while the window is dragged.
+    fn window_bounds(&self, window_id: WinID) -> Result<IRect>;
     /// Returns a list of `WinID`s for all windows in a given workspace (space).
     ///
     /// # Arguments
@@ -545,6 +548,13 @@ impl WindowManagerApi for WindowManagerOS {
     /// Returns a list of `WinID`s for all windows in a given workspace (space).
     fn windows_in_workspace(&self, space_id: WorkspaceId) -> Result<Vec<WinID>> {
         space_window_list_for_connection(self.main_cid, &[space_id], None, true)
+    }
+
+    fn window_bounds(&self, window_id: WinID) -> Result<IRect> {
+        let mut frame = CGRect::default();
+        unsafe { SLSGetWindowBounds(self.main_cid, window_id, &mut frame) }
+            .to_result(function_name!())?;
+        Ok(irect_from(frame))
     }
 
     fn window_is_unordered(&self, window_id: WinID) -> bool {

@@ -41,6 +41,7 @@ impl Plugin for MouseEventsPlugin {
         // `run_if` also skips fetching each system's parameters (Windows
         // queries, config, window manager) when there's no input event, which
         // matters for perf.
+        app.init_resource::<crate::dropbar::PaneDrag>();
         app.add_systems(
             Update,
             (
@@ -50,6 +51,9 @@ impl Plugin for MouseEventsPlugin {
                     mouse_down_trigger,
                 )
                     .run_if(mission_control_inactive),
+                crate::dropbar::track_pane_drag
+                    .run_if(mission_control_inactive)
+                    .before(mouse_up_trigger),
                 mouse_up_trigger,
                 horizontal_warp_mouse_trigger,
             )

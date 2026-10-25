@@ -879,6 +879,16 @@ impl MockState {
         wm.expect_get_associated_windows().return_const(vec![]);
 
         let s = self.clone();
+        wm.expect_window_bounds().returning(move |window_id| {
+            s.inner
+                .force_read()
+                .windows
+                .get(&window_id)
+                .map(|window| window.frame)
+                .ok_or(Error::NotFound(format!("no window {window_id}")))
+        });
+
+        let s = self.clone();
         wm.expect_find_window_at_point().returning(move |at_point| {
             let point = origin_from(*at_point);
             s.inner

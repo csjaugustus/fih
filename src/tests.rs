@@ -1,4 +1,5 @@
 mod display;
+mod dropbar;
 mod floating;
 mod focus_or_virtual;
 mod harness;

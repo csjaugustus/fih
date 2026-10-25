@@ -1007,6 +1007,7 @@ pub(super) fn update_overlays(
     mut window_config_cache: Local<OverlayWindowConfigCache>,
     window_manager: Res<WindowManager>,
     display: Query<(&Display, Option<&DockPosition>), With<ActiveDisplayMarker>>,
+    drag: Option<Res<crate::dropbar::PaneDrag>>,
 ) {
     use crate::overlay::BorderParams;
 
@@ -1070,7 +1071,9 @@ pub(super) fn update_overlays(
             let edge = display.edge_bounds(dock, &config);
             window.frame().width() >= edge.width() - 2
         });
-    let border_params = if border_enabled && !fills_screen {
+    // A dragged window outruns its border, so it goes until the drop.
+    let dragging = drag.is_some_and(|drag| drag.dragging());
+    let border_params = if border_enabled && !fills_screen && !dragging {
         if window_config_cache.window_id != Some(focused_window_id) || config.is_changed() {
             let Some((window, _, parent)) = windows.find_parent(focused_window_id) else {
                 return;

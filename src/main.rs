@@ -13,6 +13,7 @@ mod accessibility_prompt;
 mod client;
 mod commands;
 mod config;
+mod dropbar;
 mod ecs;
 mod errors;
 mod events;

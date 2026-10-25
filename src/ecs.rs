@@ -144,7 +144,8 @@ pub fn register_systems(app: &mut bevy::app::App) {
          focus_gained: Query<(), Added<FocusedMarker>>,
          workspace_changed: Query<(), Added<ActiveWorkspaceMarker>>,
          focused_moved: Query<(), (With<FocusedMarker>, Changed<Position>)>,
-         focused_resized: Query<(), (With<FocusedMarker>, Changed<Bounds>)>| {
+         focused_resized: Query<(), (With<FocusedMarker>, Changed<Bounds>)>,
+         drag: Option<Res<crate::dropbar::PaneDrag>>| {
             let Some(config) = config else {
                 return false;
             };
@@ -156,7 +157,8 @@ pub fn register_systems(app: &mut bevy::app::App) {
                         || !focus_gained.is_empty()
                         || !workspace_changed.is_empty()
                         || !focused_moved.is_empty()
-                        || !focused_resized.is_empty()))
+                        || !focused_resized.is_empty()
+                        || drag.is_some_and(|drag| drag.is_changed())))
         };
     let native_tabs_enabled =
         |config: Option<Res<Config>>| config.is_none_or(|config| config.native_tabs_enabled());
@@ -311,6 +313,7 @@ pub fn register_systems(app: &mut bevy::app::App) {
                 systems::update_flash_messages,
             )
                 .chain(),
+            crate::dropbar::update_drop_bar.run_if(resource_changed::<crate::dropbar::PaneDrag>),
             crate::menubar::update_menu_bar.run_if(
                 crate::menubar::menu_bar_dirty
                     .or_eager(resource_changed::<Config>)
@@ -931,6 +934,7 @@ pub fn setup_bevy_app(sender: EventSender, receiver: Receiver<Event>) -> Result<
         .insert_non_send(overlay_manager)
         .insert_non_send(flash_message_manager)
         .insert_non_send(minimap_manager)
+        .insert_non_send(crate::dropbar::DropBarManager::new(mtm))
         .insert_non_send(receiver);
 
     // `CONFIGURATION_FILE` is `None` exactly when an `init.lua` took the TOML
