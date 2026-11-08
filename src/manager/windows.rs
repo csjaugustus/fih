@@ -299,6 +299,9 @@ pub trait WindowApi: Send + Sync {
     /// [`Self::is_alive`] for that.
     fn role(&self) -> Result<String>;
     fn subrole(&self) -> Result<String>;
+    /// Whether the window has an enabled full-screen title-bar button. Cached
+    /// after the first successful read.
+    fn fullscreenable(&self) -> Result<bool>;
     /// Whether the window's AX element still answers. Always a fresh
     /// cross-process read, never cached.
     fn is_alive(&self) -> bool;
@@ -407,6 +410,8 @@ pub struct WindowOS {
     /// Never caches `AXUnknown`: some apps report it briefly while a window
     /// is still being created.
     subrole: OnceLock<String>,
+    /// Whether the full-screen button is present and enabled, cached like `role`.
+    fullscreenable: OnceLock<bool>,
 }
 
 impl WindowOS {
@@ -457,6 +462,7 @@ impl WindowOS {
             title: RwLock::new(None),
             role: OnceLock::new(),
             subrole: OnceLock::new(),
+            fullscreenable: OnceLock::new(),
         };
 
         let forced = window.is_forced_manage(config, bundle_id);
@@ -498,12 +504,14 @@ impl WindowOS {
         // Same transient-AX-failure caveat as `WindowProperties::new`.
         let role = self.role().ok();
         let subrole = self.subrole().ok();
+        let fullscreenable = self.fullscreenable().ok();
         config
             .find_window_properties(
                 &title,
                 bundle_id.unwrap_or_default(),
                 role.as_deref(),
                 subrole.as_deref(),
+                fullscreenable,
             )
             .iter()
             .any(|params| params.manage.is_some_and(|manage| manage))
@@ -762,6 +770,15 @@ impl WindowApi for WindowOS {
             let _ = self.subrole.set(subrole.clone());
         }
         Ok(subrole)
+    }
+
+    fn fullscreenable(&self) -> Result<bool> {
+        if let Some(fullscreenable) = self.fullscreenable.get() {
+            return Ok(*fullscreenable);
+        }
+        let fullscreenable = self.ax_element.fullscreenable()?;
+        let _ = self.fullscreenable.set(fullscreenable);
+        Ok(fullscreenable)
     }
 
     /// Reads the role straight from AX, deliberately bypassing the `role`

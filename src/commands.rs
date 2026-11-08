@@ -2010,7 +2010,7 @@ fn print_internal_state_handler(
             .and_then(|app| app.bundle_id())
             .unwrap_or_default();
         format!(
-            "\tid: {}, {entity}, {}:{}, {}x{}{}{}, bundle: {}, role: {}, subrole: {}, title: '{:.70}'",
+            "\tid: {}, {entity}, {}:{}, {}x{}{}{}, bundle: {}, role: {}, subrole: {}, fullscreenable: {}, title: '{:.70}'",
             window.id(),
             window.frame().min.x,
             window.frame().min.y,
@@ -2025,6 +2025,9 @@ fn print_internal_state_handler(
             bundle_id,
             window.role().unwrap_or_default(),
             window.subrole().unwrap_or_default(),
+            window
+                .fullscreenable()
+                .map_or_else(|_| "?".to_string(), |f| f.to_string()),
             window.title().unwrap_or_default()
         )
     };

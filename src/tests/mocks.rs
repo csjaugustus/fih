@@ -39,6 +39,8 @@ pub(crate) struct MockWindowData {
     pub(crate) visible: bool,
     pub(crate) role: String,
     pub(crate) subrole: String,
+    /// Whether the window has an enabled full-screen button.
+    pub(crate) fullscreenable: bool,
     pub(crate) identifier: String,
     pub(crate) is_full_screen: bool,
     pub(crate) border_radius: Option<f64>,
@@ -59,6 +61,7 @@ impl Default for MockWindowData {
             visible: true,
             role: "AXWindow".to_string(),
             subrole: "AXStandardWindow".to_string(),
+            fullscreenable: true,
             identifier: "testid".to_string(),
             is_full_screen: false,
             border_radius: None,
@@ -595,6 +598,16 @@ impl MockState {
                 let _ = cached_subrole.set(subrole.clone());
             }
             Ok(subrole)
+        });
+
+        let s = self.clone();
+        mw.expect_fullscreenable().returning(move || {
+            s.inner
+                .force_read()
+                .windows
+                .get(&id)
+                .map(|w| w.fullscreenable)
+                .ok_or_else(|| crate::errors::Error::Generic(format!("window {id} not found")))
         });
 
         let s = self.clone();

@@ -426,9 +426,9 @@ impl Config {
 
     /// Finds window properties for a window.
     /// It iterates through configured window parameters and returns all matching rules.
-    /// A rule matches when its title regex matches and each of its bundle ID, role
-    /// and subrole (if set) equals the window's. A rule's role or subrole never
-    /// matches a window that reports none.
+    /// A rule matches when its title regex matches and each of its bundle ID, role,
+    /// subrole and fullscreenable (if set) equals the window's. A rule's role,
+    /// subrole or fullscreenable never matches a window that reports none.
     ///
     /// # Arguments
     ///
@@ -436,6 +436,8 @@ impl Config {
     /// * `bundle_id` - The bundle identifier of the application owning the window.
     /// * `role` - The window's accessibility role, if it reports one.
     /// * `subrole` - The window's accessibility subrole, if it reports one.
+    /// * `fullscreenable` - Whether the window has an enabled full-screen button,
+    ///   if that could be read.
     ///
     /// # Returns
     ///
@@ -446,6 +448,7 @@ impl Config {
         bundle_id: &str,
         role: Option<&str>,
         subrole: Option<&str>,
+        fullscreenable: Option<bool>,
     ) -> Vec<WindowParams> {
         self.inner()
             .windows
@@ -458,9 +461,12 @@ impl Config {
                             params.bundle_id.as_ref().map(|id| id.as_str() == bundle_id);
                         let role_match = params.role.as_deref().map(|r| Some(r) == role);
                         let subrole_match = params.subrole.as_deref().map(|s| Some(s) == subrole);
+                        let fullscreenable_match =
+                            params.fullscreenable.map(|f| Some(f) == fullscreenable);
                         bundle_match.is_none_or(|m| m)
                             && role_match.is_none_or(|m| m)
                             && subrole_match.is_none_or(|m| m)
+                            && fullscreenable_match.is_none_or(|m| m)
                             && params.title.is_match(title)
                     })
                     .cloned()
@@ -1558,7 +1564,7 @@ width = "complement_focused"
 "#,
     )
     .expect("dynamic width rule parses");
-    let width = config.find_window_properties("Window 1", "", None, None)[0]
+    let width = config.find_window_properties("Window 1", "", None, None, None)[0]
         .width
         .expect("matched width rule");
     assert_eq!(width.ratio(Some(0.25)), 0.75);
@@ -1575,7 +1581,7 @@ width = 0.5
 "#,
     )
     .expect("fixed width rule still parses");
-    let width = config.find_window_properties("Window 1", "", None, None)[0]
+    let width = config.find_window_properties("Window 1", "", None, None, None)[0]
         .width
         .expect("matched width rule");
     assert_eq!(width.ratio(Some(0.25)), 0.5);
@@ -1595,6 +1601,10 @@ pub struct WindowParams {
     /// An optional accessibility subrole (e.g. `AXStandardWindow`, `AXDialog`) the
     /// window must report exactly.
     subrole: Option<String>,
+    /// Matches on whether the window has an enabled full-screen (green) button.
+    /// `false` catches progress, info and other utility windows that report
+    /// `AXStandardWindow` like any main window.
+    fullscreenable: Option<bool>,
     /// If `true`, the window will be managed as a floating window (not tiled).
     pub floating: Option<bool>,
     /// If `true`, force the process/window to be managed even if macOS reports it as
@@ -1633,6 +1643,7 @@ impl WindowParams {
             bundle_id,
             role: None,
             subrole: None,
+            fullscreenable: None,
             floating: None,
             manage: None,
             index: None,
@@ -2308,8 +2319,13 @@ index = 1
         Some(Command::Window(Operation::Resize(ResizeDirection::Shrink)))
     ));
 
-    let props =
-        config.find_window_properties("picture in picture", "com.something.apple", None, None);
+    let props = config.find_window_properties(
+        "picture in picture",
+        "com.something.apple",
+        None,
+        None,
+        None,
+    );
     assert_eq!(props[0].floating, Some(true));
     assert_eq!(props[0].index, Some(1));
 
@@ -2465,6 +2481,7 @@ fn test_grid_ratios() {
         bundle_id: None,
         role: None,
         subrole: None,
+        fullscreenable: None,
         floating: None,
         manage: None,
         index: None,
@@ -2654,7 +2671,7 @@ fn test_first_launch_creates_parseable_config_without_overwriting_it() {
     };
     assert!(
         config
-            .find_window_properties("WeChat", "com.tencent.xinWeChat", None, None)
+            .find_window_properties("WeChat", "com.tencent.xinWeChat", None, None, None)
             .iter()
             .any(|params| params.floating == Some(true)),
         "a fresh install floats the default floating apps"
@@ -2704,15 +2721,55 @@ floating = true
         "com.hegenberg.BetterTouchTool",
         None,
         None,
+        None,
     );
     assert_eq!(props.len(), 1);
     assert_eq!(props[0].manage, Some(true));
 
     // Screenshot window matches the floating rule.
-    let props =
-        config.find_window_properties("Screenshot 1", "com.hegenberg.BetterTouchTool", None, None);
+    let props = config.find_window_properties(
+        "Screenshot 1",
+        "com.hegenberg.BetterTouchTool",
+        None,
+        None,
+        None,
+    );
     assert_eq!(props.len(), 1);
     assert_eq!(props[0].floating, Some(true));
+}
+
+#[test]
+fn test_window_rules_match_fullscreenable() {
+    let input = r#"
+[options]
+
+[bindings]
+
+[windows.utility]
+title = ".*"
+fullscreenable = false
+floating = true
+"#;
+    let config = Config::try_from(input).unwrap();
+    let floats = |fullscreenable| {
+        config
+            .find_window_properties("Copy", "com.apple.finder", None, None, fullscreenable)
+            .iter()
+            .any(|params| params.floating == Some(true))
+    };
+
+    assert!(
+        floats(Some(false)),
+        "a window without a full-screen button floats"
+    );
+    assert!(
+        !floats(Some(true)),
+        "a window with a full-screen button stays tiled"
+    );
+    assert!(
+        !floats(None),
+        "a rule's fullscreenable never matches a window whose button could not be read"
+    );
 }
 
 #[test]
@@ -2747,7 +2804,7 @@ dont_focus = true
     let config = Config::try_from(input).expect("config should parse");
     let matched = |title, bundle_id, role, subrole| {
         let mut names = config
-            .find_window_properties(title, bundle_id, role, subrole)
+            .find_window_properties(title, bundle_id, role, subrole, None)
             .iter()
             .map(|params| {
                 if params.floating == Some(true) {
@@ -2956,7 +3013,7 @@ mod lua_setup_tests {
                 windows = { term = { title = "kitty", bindings_passthrough = { "ctrl+alt-h" } } },
             }"#,
         );
-        let rules = config.find_window_properties("kitty", "", None, None);
+        let rules = config.find_window_properties("kitty", "", None, None, None);
         assert_eq!(rules.len(), 1);
         assert!(
             !rules[0].passthrough_keys().is_empty(),
@@ -2975,17 +3032,24 @@ mod lua_setup_tests {
             }"#,
         );
 
-        let rules = config.find_window_properties("Save", "", Some("AXWindow"), Some("AXDialog"));
+        let rules =
+            config.find_window_properties("Save", "", Some("AXWindow"), Some("AXDialog"), None);
         assert_eq!(rules.len(), 1, "only the subrole rule matches a dialog");
         assert_eq!(rules[0].floating, Some(true));
 
-        let rules = config.find_window_properties("Sheet", "", Some("AXSheet"), None);
+        let rules = config.find_window_properties("Sheet", "", Some("AXSheet"), None, None);
         assert_eq!(rules.len(), 1, "only the role rule matches a sheet");
         assert_eq!(rules[0].index, Some(2));
 
         assert!(
             config
-                .find_window_properties("Main", "", Some("AXWindow"), Some("AXStandardWindow"))
+                .find_window_properties(
+                    "Main",
+                    "",
+                    Some("AXWindow"),
+                    Some("AXStandardWindow"),
+                    None
+                )
                 .is_empty(),
             "neither rule matches a standard window"
         );

@@ -925,6 +925,51 @@ floating = true
         .run(commands);
 }
 
+/// A `fullscreenable = false` rule floats windows without a full-screen button
+/// (e.g. Finder's copy progress window, which reports `AXStandardWindow`)
+/// while ordinary windows of the same app stay tiled.
+#[test]
+fn test_fullscreenable_window_rule_floats_utility_windows() {
+    let config = Config::try_from(
+        r#"
+[options]
+
+[bindings]
+
+[windows.utility]
+title = ".*"
+fullscreenable = false
+floating = true
+"#,
+    )
+    .expect("config should parse");
+
+    let commands = vec![Event::Command {
+        command: Command::PrintState,
+    }];
+
+    TestHarness::new()
+        .with_config(config)
+        .with_windows(2)
+        .with_window(1, |window| window.fullscreenable = false)
+        // Iterations are 0-indexed: this is the only command's iteration.
+        .on_iteration(0, |world, _state| {
+            let is_floating = |world: &mut World, id| {
+                let entity = find_window_entity(id, world);
+                matches!(
+                    world.entity(entity).get::<crate::ecs::Unmanaged>(),
+                    Some(crate::ecs::Unmanaged::Floating)
+                )
+            };
+            assert!(
+                !is_floating(world, 0),
+                "a fullscreenable window must stay tiled"
+            );
+            assert!(is_floating(world, 1), "a utility window must float");
+        })
+        .run(commands);
+}
+
 /// Regression test: during startup (`Initializing`), `apply_window_defaults` and
 /// `apply_window_positions` must classify floating windows as `Unmanaged::Floating`
 /// *before* `finish_setup` populates the workspace strip and selects the initial

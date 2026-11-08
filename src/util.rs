@@ -1,6 +1,7 @@
 use accessibility_sys::{
-    AXObserverGetRunLoopSource, AXUIElementRef, kAXFocusedWindowAttribute, kAXMinimizedAttribute,
-    kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXWindowsAttribute,
+    AXObserverGetRunLoopSource, AXUIElementRef, kAXEnabledAttribute, kAXErrorAttributeUnsupported,
+    kAXErrorNoValue, kAXFocusedWindowAttribute, kAXMinimizedAttribute, kAXRoleAttribute,
+    kAXSubroleAttribute, kAXTitleAttribute, kAXWindowsAttribute,
 };
 use core::ptr::NonNull;
 use objc2::rc::{Retained, autoreleasepool};
@@ -196,6 +197,23 @@ pub trait AXUIAttributes {
             .map(|value| CFBoolean::value(&value))
     }
 
+    /// Whether the window has an enabled full-screen (green) title-bar button.
+    /// Progress, info and other utility windows typically have none, or a
+    /// disabled one, even when they report `AXStandardWindow`.
+    ///
+    /// `Ok(false)` when the window has no such button; `Err` only when the
+    /// app could not be asked.
+    fn fullscreenable(&self) -> Result<bool> {
+        let axname = CFString::from_str("AXFullScreenButton");
+        let Some(button) = self.get_optional_attribute::<AXUIWrapper>(&axname)? else {
+            return Ok(false);
+        };
+        let axname = CFString::from_static_str(kAXEnabledAttribute);
+        Ok(button
+            .get_optional_attribute::<CFBoolean>(&axname)?
+            .is_some_and(|enabled| CFBoolean::value(&enabled)))
+    }
+
     fn focused_window_element(&self) -> Result<CFRetained<AXUIWrapper>> {
         let axname = CFString::from_static_str(kAXFocusedWindowAttribute);
         self.get_attribute::<AXUIWrapper>(&axname)
@@ -213,6 +231,13 @@ pub trait AXUIAttributes {
     }
 
     fn get_attribute<T: Type>(&self, name: &CFRetained<CFString>) -> Result<CFRetained<T>>;
+
+    /// Like [`Self::get_attribute`], but `Ok(None)` when the element has no such
+    /// attribute or it has no value, rather than an error.
+    fn get_optional_attribute<T: Type>(
+        &self,
+        name: &CFRetained<CFString>,
+    ) -> Result<Option<CFRetained<T>>>;
 }
 
 impl AXUIAttributes for CFRetained<AXUIWrapper> {
@@ -225,6 +250,19 @@ impl AXUIAttributes for CFRetained<AXUIWrapper> {
             .ok_or(Error::InvalidInput(format!(
                 "nullptr while getting attribute {name}.",
             )))
+    }
+
+    fn get_optional_attribute<T: Type>(
+        &self,
+        name: &CFRetained<CFString>,
+    ) -> Result<Option<CFRetained<T>>> {
+        let mut attribute: *mut CFType = null_mut();
+        let status = unsafe { AXUIElementCopyAttributeValue(self.as_ptr(), name, &mut attribute) };
+        if status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue {
+            return Ok(None);
+        }
+        status.to_result(function_name!())?;
+        Ok(NonNull::new(attribute).map(|ptr| unsafe { CFRetained::from_raw(ptr.cast()) }))
     }
 }
 

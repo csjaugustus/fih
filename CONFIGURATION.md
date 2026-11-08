@@ -396,6 +396,7 @@ accessibility role/subrole.
 | `bundle_id` | String | Optional Bundle ID to match (e.g., `com.apple.Terminal`). |
 | `role` | String | Optional accessibility role to match exactly (e.g., `AXWindow`). A rule with `role` never matches a window that reports none. |
 | `subrole` | String | Optional accessibility subrole to match exactly (e.g., `AXStandardWindow`, `AXDialog`, `AXFloatingWindow`). A rule with `subrole` never matches a window that reports none. |
+| `fullscreenable` | Boolean | Optional match on whether the window has an enabled full-screen (green) title-bar button. `false` catches progress, info and other utility windows (e.g. Finder's copy window) that report `AXStandardWindow` like any main window. A rule with `fullscreenable` never matches a window whose button can't be read. |
 | `floating` | Boolean | Force the window to be floating/unmanaged. |
 | `manage` | Boolean | Force fih to manage this app/window even if macOS reports the app as unobservable or the window has a non-standard role/subrole. |
 | `index` | Integer | Preferred position in the strip when spawned. |
@@ -440,6 +441,17 @@ floating = true
 [windows.floating_window]
 title = ".*"
 subrole = "AXFloatingWindow"
+floating = true
+```
+
+To keep small utility windows out of the strip in every app, without matching
+titles, float the ones that have no working full-screen button. Run
+`fih send-cmd printstate` to see each window's `fullscreenable` value.
+
+```toml
+[windows.utility]
+title = ".*"
+fullscreenable = false
 floating = true
 ```
 
