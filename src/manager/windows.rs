@@ -16,10 +16,9 @@ use objc2_core_foundation::{
 };
 use std::collections::HashMap;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, OnceLock, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use stdext::function_name;
 use stdext::sync::rw_lock::RwLockExt;
 use tracing::{Level, debug, instrument, trace, warn};
@@ -39,11 +38,18 @@ use crate::util::{AXUIAttributes, AXUIWrapper, MacResult};
 static ENHANCED_UI_STATES: LazyLock<Mutex<HashMap<Pid, Arc<Mutex<EnhancedUiState>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// How long a confirmed false `AXEnhancedUserInterface` is trusted before it
+/// is read again. Not forever: Chromium apps switch the flag on whenever an
+/// accessibility client asks, long after we first looked, and a stale false
+/// leaves them animating every move we make.
+const ENHANCED_UI_ABSENT_TTL: Duration = Duration::from_secs(1);
+
 #[derive(Debug, Default)]
 struct EnhancedUiState {
     active_operations: usize,
-    /// Permanently cache a confirmed false value, but never an AX read error.
-    absent: bool,
+    /// Until when a confirmed false value is cached. Never set by an AX read
+    /// error.
+    absent_until: Option<Instant>,
     /// Retained after a failed restoration so our own false value isn't cached.
     restore_pending: bool,
 }
@@ -54,7 +60,10 @@ impl EnhancedUiState {
         read_enabled: impl FnOnce() -> Result<bool>,
         disable: impl FnOnce(),
     ) -> Result<bool> {
-        if self.absent {
+        if self
+            .absent_until
+            .is_some_and(|until| Instant::now() < until)
+        {
             return Ok(false);
         }
         if self.active_operations > 0 {
@@ -62,9 +71,10 @@ impl EnhancedUiState {
             return Ok(true);
         }
         if !self.restore_pending && !read_enabled()? {
-            self.absent = true;
+            self.absent_until = Some(Instant::now() + ENHANCED_UI_ABSENT_TTL);
             return Ok(false);
         }
+        self.absent_until = None;
         // AX setters can change app state before returning an error. Once a
         // write is attempted, owe a restoration even if it reports failure.
         self.restore_pending = true;
@@ -153,7 +163,7 @@ fn acquire_enhanced_ui<F: FnOnce() -> Result<()>>(
         pid,
         acquired,
         active_operations = locked.active_operations,
-        absent = locked.absent,
+        absent = locked.absent_until.is_some(),
         restore_pending = locked.restore_pending,
         "acquired enhanced UI guard"
     );
@@ -386,11 +396,6 @@ pub struct WindowOS {
     pid: OnceLock<Result<Pid>>,
     app_reference: OnceLock<Option<CFRetained<AXUIWrapper>>>,
     enhanced_ui_state: OnceLock<Arc<Mutex<EnhancedUiState>>>,
-    /// Set once this window's app is known not to use
-    /// `AXEnhancedUserInterface` (the common case), so the steady-state check
-    /// in [`Self::disable_enhanced_ui`] is a relaxed atomic load instead of
-    /// acquiring the PID lock from every `par_iter_mut` worker.
-    enhanced_ui_absent: AtomicBool,
 
     /// The last title read off the element, cached because reading one is a
     /// synchronous cross-process call and many callers want it for every
@@ -458,7 +463,6 @@ impl WindowOS {
             pid: OnceLock::new(),
             app_reference: OnceLock::new(),
             enhanced_ui_state: OnceLock::new(),
-            enhanced_ui_absent: AtomicBool::new(false),
             title: RwLock::new(None),
             role: OnceLock::new(),
             subrole: OnceLock::new(),
@@ -557,9 +561,6 @@ impl WindowOS {
     /// Suppresses app-driven move/resize animations until the last guard drops.
     /// The PID lock covers flag/counter transitions, not the window operations.
     fn disable_enhanced_ui(&self) -> Option<EnhancedUiGuard<impl FnOnce() -> Result<()> + use<>>> {
-        if self.enhanced_ui_absent.load(Ordering::Relaxed) {
-            return None;
-        }
         let pid = self.pid().ok()?;
         let state = self
             .enhanced_ui_state
@@ -585,18 +586,7 @@ impl WindowOS {
             || set_enhanced_ui(&app_element, false, pid, window_id),
             move || set_enhanced_ui(&restore_element, true, pid, window_id),
         ) {
-            Ok(guard) => {
-                if guard.is_none() {
-                    debug!(
-                        target: "paneru::ax_diagnostics",
-                        pid,
-                        window_id,
-                        "permanently caching false; skipping enhanced UI workaround"
-                    );
-                    self.enhanced_ui_absent.store(true, Ordering::Relaxed);
-                }
-                guard
-            }
+            Ok(guard) => guard,
             Err(err) => {
                 warn!(pid, window_id, "error reading enhanced UI: {err}");
                 None
@@ -1061,7 +1051,8 @@ mod tests {
     use crate::events::Event;
     use crate::platform::ProcessSerialNumber;
     use crate::tests::TestHarness;
-    use std::sync::{atomic::AtomicUsize, mpsc};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::mpsc;
 
     #[test]
     fn enhanced_ui_termination_discards_failed_restoration_before_pid_reuse() {
@@ -1269,7 +1260,7 @@ mod tests {
         assert_eq!(restorations.load(Ordering::Relaxed), 1);
         let state = state.lock().unwrap();
         assert_eq!(state.active_operations, 0);
-        assert!(!state.absent);
+        assert!(state.absent_until.is_none());
         assert!(!state.restore_pending);
     }
 
@@ -1343,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn enhanced_ui_confirmed_false_is_permanently_cached() {
+    fn enhanced_ui_confirmed_false_is_cached_briefly() {
         let state = Arc::new(Mutex::new(EnhancedUiState::default()));
         let guard = acquire_enhanced_ui(
             state.clone(),
@@ -1364,9 +1355,37 @@ mod tests {
         )
         .unwrap();
         assert!(guard.is_none());
-        let state = state.lock().unwrap();
-        assert!(state.absent);
-        assert_eq!(state.active_operations, 0);
+        {
+            let state = state.lock().unwrap();
+            assert!(state.absent_until.is_some());
+            assert_eq!(state.active_operations, 0);
+        }
+
+        // Once the cache expires the flag is read again, so an app that turned
+        // it on since (Chromium does when an accessibility client asks) gets
+        // the workaround instead of animating every move.
+        state.lock().unwrap().absent_until = Some(Instant::now());
+        let enabled = Arc::new(AtomicBool::new(true));
+        let restored = enabled.clone();
+        let guard = acquire_enhanced_ui(
+            state.clone(),
+            1,
+            || Ok(true),
+            || {
+                enabled.store(false, Ordering::Relaxed);
+                Ok(())
+            },
+            move || {
+                restored.store(true, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(guard.is_some());
+        assert!(!enabled.load(Ordering::Relaxed));
+        assert!(state.lock().unwrap().absent_until.is_none());
+        drop(guard);
+        assert!(enabled.load(Ordering::Relaxed));
     }
 
     #[test]
@@ -1387,7 +1406,7 @@ mod tests {
             )
             .unwrap();
             assert!(guard.is_none());
-            assert!(state.lock().unwrap().absent);
+            assert!(state.lock().unwrap().absent_until.is_some());
         }
     }
 
@@ -1404,7 +1423,7 @@ mod tests {
         assert!(read_error.is_err());
         {
             let state = state.lock().unwrap();
-            assert!(!state.absent);
+            assert!(state.absent_until.is_none());
             assert!(!state.restore_pending);
             assert_eq!(state.active_operations, 0);
         }
@@ -1453,7 +1472,7 @@ mod tests {
         assert!(enabled.load(Ordering::Relaxed));
         let state = state.lock().unwrap();
         assert_eq!(state.active_operations, 0);
-        assert!(!state.absent);
+        assert!(state.absent_until.is_none());
         assert!(!state.restore_pending);
     }
 
@@ -1514,7 +1533,7 @@ mod tests {
             let state = state.lock().unwrap();
             assert_eq!(state.active_operations, 0);
             assert!(state.restore_pending);
-            assert!(!state.absent);
+            assert!(state.absent_until.is_none());
         }
         let retry = acquire_enhanced_ui(
             state.clone(),
@@ -1531,7 +1550,7 @@ mod tests {
         drop(retry);
         assert!(enabled.load(Ordering::Relaxed));
         let state = state.lock().unwrap();
-        assert!(!state.absent);
+        assert!(state.absent_until.is_none());
         assert!(!state.restore_pending);
         assert_eq!(state.active_operations, 0);
     }
